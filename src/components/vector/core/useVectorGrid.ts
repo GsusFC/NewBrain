@@ -80,25 +80,50 @@ export const useVectorGrid = ({
     let actualCols: number;
     let adjustedSpacing: number = spacing ?? DEFAULT_SPACING; // Usar el spacing provisto o el default
 
+    // Manejo mejorado del aspectRatio
+    // Aseguramos que gridAspectRatio sea siempre un número
+    const gridAspectRatio = aspectRatio === 'auto' 
+      ? (availableWidth / availableHeight) 
+      : (typeof aspectRatio === 'number' ? aspectRatio : 1.5); // Valor por defecto si no es válido
+
     if (desiredRows && desiredRows > 0) {
         actualRows = desiredRows;
         if (desiredCols && desiredCols > 0) {
             actualCols = desiredCols;
             if (debugMode) {
-              console.log('[useVectorGrid] Case 1: desiredRows and desiredCols provided. actualRows:', actualRows, 'actualCols:', actualCols);
+              console.log('[useVectorGrid] Case 1: desiredRows y desiredCols definidos. actualRows:', actualRows, 'actualCols:', actualCols);
             }
-            const spacingBasedOnWidth = availableWidth / actualCols;
-            const spacingBasedOnHeight = availableHeight / actualRows;
-            adjustedSpacing = Math.min(spacingBasedOnWidth, spacingBasedOnHeight);
-        } else {
-            actualCols = Math.max(1, Math.floor(availableWidth / adjustedSpacing));
+            
+            // Aseguramos que respetamos proporciones y aprovechamos el espacio disponible
+            const idealAspectRatio = actualCols / actualRows;
+            const containerAspectRatio = availableWidth / availableHeight;
+            
+            // Ajustamos spacing para optimizar el uso del contenedor manteniendo proporción
+            if (containerAspectRatio > idealAspectRatio) {
+                // El contenedor es más ancho que la proporción ideal -> ajustar por altura
+                adjustedSpacing = availableHeight / actualRows;
+            } else {
+                // El contenedor es más alto o igual a la proporción ideal -> ajustar por ancho
+                adjustedSpacing = availableWidth / actualCols;
+            }
+            
             if (debugMode) {
-              console.log('[useVectorGrid] Case 2: Only desiredRows provided. actualRows:', actualRows, 'Calculated actualCols:', actualCols, 'using adjustedSpacing:', adjustedSpacing);
+                console.log('[useVectorGrid] Proporciones - ideal:', idealAspectRatio, 'contenedor:', containerAspectRatio);
+            }
+        } else {
+            // Solo se definió número de filas, calculamos columnas basado en el aspectRatio
+            actualCols = Math.max(1, Math.round(actualRows * gridAspectRatio));
+            adjustedSpacing = Math.min(availableWidth / actualCols, availableHeight / actualRows);
+            
+            if (debugMode) {
+              console.log('[useVectorGrid] Case 2: Solo desiredRows definido. actualRows:', actualRows, 'Calculado actualCols:', actualCols, 'usando gridAspectRatio:', gridAspectRatio);
             }
         }
     } else if (desiredCols && desiredCols > 0) {
         actualCols = desiredCols;
-        actualRows = Math.max(1, Math.floor(availableHeight / adjustedSpacing));
+        // Calculamos filas basado en el aspectRatio
+        actualRows = Math.max(1, Math.round(actualCols / gridAspectRatio));
+        adjustedSpacing = Math.min(availableWidth / actualCols, availableHeight / actualRows);
         if (debugMode) {
           console.log('[useVectorGrid] Case 3: Only desiredCols provided. actualCols:', actualCols, 'Calculated actualRows:', actualRows, 'using adjustedSpacing:', adjustedSpacing);
         }
@@ -141,34 +166,67 @@ export const useVectorGrid = ({
       console.log('[useVectorGrid] Offsets for first vector (0,0) center:', { finalOffsetX, finalOffsetY });
     }
 
-    const newVectors: AnimatedVectorItem[] = [];
-    let vectorIndex = 0;
+    // Verificación para evitar valores extremos que podrían causar problemas
+    const safeAdjustedSpacing = Math.min(
+      Math.max(10, adjustedSpacing), // Mínimo 10px de espaciado
+      Math.min(availableWidth / 2, availableHeight / 2) // Evitar que ocupen más del 50% del contenedor
+    );
 
-    for (let r = 0; r < actualRows; r++) {
-      for (let c = 0; c < actualCols; c++) {
-        const itemX_center = finalOffsetX + c * adjustedSpacing;
-        const itemY_center = finalOffsetY + r * adjustedSpacing;
+    // Validación adicional para evitar generación masiva de vectores
+    const safeRows = Math.min(actualRows, 50); // Máximo 50 filas (seguridad)
+    const safeCols = Math.min(actualCols, 50); // Máximo 50 columnas (seguridad)
 
-        const initialAngle = typeof initialRotation === 'function'
-          ? initialRotation({ r, c } as AnimatedVectorItem)
-          : initialRotation;
+    if (debugMode && (safeRows < actualRows || safeCols < actualCols)) {
+      console.warn(`[useVectorGrid] Limitando grid de ${actualRows}x${actualCols} a ${safeRows}x${safeCols} para prevenir problemas de rendimiento`);
+    }
 
-        newVectors.push({
-          id: `vector-${r}-${c}`,
-          r, c, baseX: itemX_center, baseY: itemY_center,
-          initialAngle, currentAngle: initialAngle,
-          lengthFactor: 1.0, widthFactor: 1.0,
-          previousAngle: initialAngle, targetAngle: initialAngle,
-          animationState: {},
-          flockId: Math.floor(vectorIndex / (vectorsPerFlock > 0 ? vectorsPerFlock : 1)),
-          customData: null,
-        });
-        vectorIndex++;
+    // Generamos los vectores con distribución optimizada usando memoización
+    const initialVectors: AnimatedVectorItem[] = [];
+
+    for (let row = 0; row < safeRows; row++) {
+      for (let col = 0; col < safeCols; col++) {
+        // Calculamos posición con distribución óptima
+        const x = finalOffsetX + (col * safeAdjustedSpacing);
+        const y = finalOffsetY + (row * safeAdjustedSpacing);
+
+        // Verificación para asegurar que el vector esté dentro del área visible
+        const isWithinBounds = 
+          x >= 0 && 
+          x <= width && 
+          y >= 0 && 
+          y <= height;
+
+        if (isWithinBounds) {
+          const initialAngle = typeof initialRotation === 'function'
+            ? initialRotation({ r: row, c: col } as AnimatedVectorItem)
+            : initialRotation;
+
+          initialVectors.push({
+            id: `vector-${row}-${col}`,
+            r: row, 
+            c: col, 
+            baseX: x, 
+            baseY: y,
+            initialAngle, 
+            currentAngle: initialAngle,
+            lengthFactor: 1.0, 
+            widthFactor: 1.0,
+            previousAngle: initialAngle, 
+            targetAngle: initialAngle,
+            animationState: {},
+            flockId: Math.floor(row * safeCols + col / (vectorsPerFlock > 0 ? vectorsPerFlock : 1)),
+            customData: null,
+          });
+        }
       }
+    }
+    
+    if (debugMode) {
+      console.log(`[useVectorGrid] Generados ${initialVectors.length} vectores de ${safeRows * safeCols} posibles`);
     }
 
     return {
-      initialVectors: newVectors,
+      initialVectors,
       calculatedCols: actualCols,
       calculatedRows: actualRows,
       calculatedGridWidth, 

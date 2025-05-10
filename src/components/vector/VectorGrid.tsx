@@ -10,7 +10,7 @@ import { debounce } from 'lodash'; // Asegurarse de que debounce esté importado
 import { useVectorGrid } from './core/useVectorGrid'; 
 import { useVectorAnimation } from './core/useVectorAnimation'; 
 import VectorSvgRenderer from './renderers/VectorSvgRenderer'; // Importar SVG Renderer
-// import VectorCanvasRenderer from './renderers/VectorCanvasRenderer'; // Mantener comentado por ahora
+import VectorCanvasRenderer from './renderers/VectorCanvasRenderer'; // Importar Canvas Renderer
 
 import type {
   VectorGridProps,
@@ -263,11 +263,20 @@ const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
           />
         )}
         {renderAsCanvas && (
-          // Placeholder para el Canvas Renderer
-          // <VectorCanvasRenderer vectors={animatedVectors} width={finalWidth} height={finalHeight} ... />
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <p style={{ color: 'var(--foreground)' }}>Canvas Renderer (Not fully implemented yet)</p>
-          </div>
+          <VectorCanvasRenderer 
+            vectors={animatedVectors} 
+            width={currentDimensions.width}
+            height={currentDimensions.height}
+            backgroundColor={backgroundColor}
+            baseVectorLength={finalVectorSettings.vectorLength ?? DEFAULT_VECTOR_SETTINGS.vectorLength}
+            baseVectorColor={finalVectorSettings.vectorColor}
+            baseVectorWidth={finalVectorSettings.vectorWidth}
+            baseVectorShape={finalVectorSettings.vectorShape}
+            baseStrokeLinecap={finalVectorSettings.strokeLinecap}
+            baseRotationOrigin={finalVectorSettings.rotationOrigin}
+            userSvgString={finalGridSettings.userSvg}
+            userSvgPreserveAspectRatio={finalGridSettings.userSvgPreserveAspectRatio}
+          />
         )}
 
         {debugMode && (
