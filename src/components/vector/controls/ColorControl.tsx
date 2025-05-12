@@ -346,9 +346,15 @@ export function ColorControl({
   }, [stops]);
   
   // Manejar clic en presets
-  const handlePresetClick = useCallback((preset: GradientStop[]) => {
-    setStops(preset);
-    applyGradientWithStops(preset);
+  const handlePresetClick = useCallback((preset: GradientStop[] | ColorPalette) => {
+    // Convertir paletas a GradientStops si es necesario
+    const stops = Array.isArray(preset) ? preset : preset.colors.map((color, index) => ({
+      color,
+      position: Math.round((index / (preset.colors.length - 1)) * 100)
+    }));
+    
+    setStops(stops);
+    applyGradientWithStops(stops);
   }, [applyGradientWithStops]);
   
   // Manejar selección de ángulo
@@ -475,10 +481,9 @@ export function ColorControl({
                           onClick={() => handlePresetClick(palette)}
                           className="w-full aspect-square rounded border border-gray-200 hover:scale-110 transition-transform overflow-hidden"
                           style={{
-                            background: `linear-gradient(${angle}deg, ${palette
-                              .sort((a, b) => a.position - b.position)
-                              .map(s => `${s.color} ${s.position}%`)
-                              .join(', ')})`
+                            background: `linear-gradient(${angle}deg, ${palette.colors.map((color, idx) => 
+                              `${color} ${idx * (100 / (palette.colors.length - 1))}%`
+                            ).join(', ')})`
                           }}
                           aria-label={`Preset de gradiente ${i + 1}`}
                           onKeyDown={(e) => {
