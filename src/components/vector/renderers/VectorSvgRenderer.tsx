@@ -1,14 +1,14 @@
 // Ruta: src/components/vector/renderers/VectorSvgRenderer.tsx
-'use client'; // Si es necesario en tu entorno (ej. Next.js App Router con hooks de cliente)
+'use client';
 
 import React, { useMemo, useRef } from 'react';
-import type { // Asegúrate que estas importaciones son desde tu types.ts
+import type { 
   AnimatedVectorItem,
   VectorColorValue,
   GradientConfig,
   VectorRenderProps,
   VectorShape,
-} from '../core/types'; // Ajusta la ruta si es diferente
+} from '../core/types';
 
 // --- Props del Componente Renderer ---
 interface VectorSvgRendererProps {
@@ -24,37 +24,26 @@ interface VectorSvgRendererProps {
   baseRotationOrigin: 'start' | 'center' | 'end';
   customRenderer?: (renderProps: VectorRenderProps) => React.JSX.Element;
   userSvgString?: string;
-  userSvgPreserveAspectRatio?: string; // ej. 'xMidYMid meet', 'none'
+  userSvgPreserveAspectRatio?: string;
   onVectorClick?: (item: AnimatedVectorItem, event: React.MouseEvent<SVGElement>) => void;
   onVectorHover?: (item: AnimatedVectorItem | null, event: React.MouseEvent<SVGElement>) => void;
 }
 
-// --- Helpers ---
-
-/**
- * Calcula el offset X local para la transformación de rotación SVG.
- */
+// Helpers
 const getRotationOffset = (origin: 'start' | 'center' | 'end', length: number): number => {
   switch (origin) {
-    case 'center':
-      return length / 2;
-    case 'end':
-      return length;
-    case 'start':
-    default:
-      return 0;
+    case 'center': return length / 2;
+    case 'end': return length;
+    default: return 0;
   }
 };
 
 interface ParsedViewBox { x: number; y: number; width: number; height: number; }
 
-/**
- * Parsea el atributo viewBox de un string SVG.
- */
 const parseViewBox = (svgString?: string): ParsedViewBox | null => {
   if (!svgString) return null;
   try {
-    const match = svgString.match(/viewBox="([^"]+)"/);
+    const match = svgString.match(/viewBox="([^"]+)"/i);
     if (match && match[1]) {
       const [x, y, width, height] = match[1].split(/[\s,]+/).map(Number);
       if ([x, y, width, height].every(v => !isNaN(v))) {
@@ -67,13 +56,9 @@ const parseViewBox = (svgString?: string): ParsedViewBox | null => {
   return null;
 };
 
-/**
- * Extrae el contenido interno (elementos hijos) de la etiqueta <svg> raíz.
- */
 const getSvgInnerContent = (svgString?: string): string => {
   if (!svgString) return '';
   try {
-    // Una forma simple de extraer contenido, podría ser más robusta con DOMParser si es necesario
     const svgTagStart = svgString.indexOf('>') + 1;
     const svgTagEnd = svgString.lastIndexOf('</svg>');
     if (svgTagStart > 0 && svgTagEnd > svgTagStart) {
@@ -82,17 +67,15 @@ const getSvgInnerContent = (svgString?: string): string => {
   } catch (e) {
     console.error("Error extracting SVG inner content", e);
   }
-  return ''; // Devuelve vacío si no se puede parsear
+  return '';
 };
 
-
-// --- Componente Renderer ---
-
+// Componente
 const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
   vectors,
   width,
   height,
-  backgroundColor = 'transparent', // Default a transparente si no se provee
+  backgroundColor = 'transparent',
   baseVectorLength,
   baseVectorColor,
   baseVectorWidth,
@@ -101,18 +84,21 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
   baseRotationOrigin,
   customRenderer,
   userSvgString,
-  userSvgPreserveAspectRatio = 'xMidYMid meet', // Default para <symbol> o <svg>
+  userSvgPreserveAspectRatio = 'xMidYMid meet',
   onVectorClick,
   onVectorHover,
 }) => {
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // Validar dimensiones
   if (width <= 0 || height <= 0) return null;
 
-  // Memoizar generación de <defs> para degradados y SVG de usuario
+  // Defs para gradientes y SVG
   const defsContent = useMemo(() => {
     const gradientMap = new Map<string, { config: GradientConfig, id: string }>();
     let gradientIdCounter = 0;
     const localGradientDefs: React.JSX.Element[] = [];
-
+    
     // Procesar color base si es un GradientConfig
     if (typeof baseVectorColor === 'object' && baseVectorColor !== null && 'type' in baseVectorColor) {
       const key = JSON.stringify(baseVectorColor);
@@ -121,15 +107,13 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
         gradientMap.set(key, { config: baseVectorColor, id });
       }
     }
-    // Nota: Si baseVectorColor es una función que devuelve GradientConfig,
-    // la lógica para generar defs para esos necesitaría iterar sobre los vectores
-    // o identificar todas las configs únicas devueltas.
 
     gradientMap.forEach(({ config, id }) => {
       const commonProps = {
         id,
         gradientUnits: config.units || "objectBoundingBox",
       };
+      
       const stops = config.stops.map((stop, i) => (
         <stop
           key={`${id}-stop-${i}`}
@@ -138,27 +122,38 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
           stopOpacity={stop.opacity !== undefined ? stop.opacity : 1}
         />
       ));
+      
       if (config.type === 'linear') {
-        localGradientDefs.push(<linearGradient key={id} {...commonProps} {...config.coords}>{stops}</linearGradient>);
+        localGradientDefs.push(
+          <linearGradient key={id} {...commonProps} {...config.coords}>
+            {stops}
+          </linearGradient>
+        );
       } else if (config.type === 'radial') {
-        localGradientDefs.push(<radialGradient key={id} {...commonProps} {...config.coords}>{stops}</radialGradient>);
+        localGradientDefs.push(
+          <radialGradient key={id} {...commonProps} {...config.coords}>
+            {stops}
+          </radialGradient>
+        );
       }
     });
 
-    // Definición para el SVG de usuario si existe
+    // SVG de usuario
     let userSymbolDef: React.JSX.Element | null = null;
-    let userSymbolViewBox: ParsedViewBox | null = null;
     if (baseVectorShape === 'userSvg' && userSvgString) {
-      userSymbolViewBox = parseViewBox(userSvgString);
+      const userSymbolViewBox = parseViewBox(userSvgString);
       const innerContent = getSvgInnerContent(userSvgString);
+      
       if (innerContent) {
         userSymbolDef = (
           <symbol
             id="userProvidedSymbol"
-            viewBox={userSymbolViewBox ? `${userSymbolViewBox.x} ${userSymbolViewBox.y} ${userSymbolViewBox.width} ${userSymbolViewBox.height}` : undefined}
+            key="userProvidedSymbol"
+            viewBox={userSymbolViewBox ? 
+              `${userSymbolViewBox.x} ${userSymbolViewBox.y} ${userSymbolViewBox.width} ${userSymbolViewBox.height}` : 
+              undefined}
             preserveAspectRatio={userSvgPreserveAspectRatio}
           >
-            {/* Usar un parser o un método más seguro si la fuente del SVG no es de confianza */}
             <g dangerouslySetInnerHTML={{ __html: innerContent }} />
           </symbol>
         );
@@ -173,11 +168,9 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
         </defs>
       );
     }
+    
     return null;
   }, [baseVectorColor, baseVectorShape, userSvgString, userSvgPreserveAspectRatio]);
-
-
-  const svgRef = useRef<SVGSVGElement>(null);
 
   return (
     <svg
@@ -186,163 +179,236 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       xmlns="http://www.w3.org/2000/svg"
-      xmlnsXlink="http://www.w3.org/1999/xlink" // Necesario para xlink:href en <use>
-      style={{ border: '2px dashed blue', boxSizing: 'border-box', display: 'block', userSelect: 'none', backgroundColor: 'transparent' }}
+      xmlnsXlink="http://www.w3.org/1999/xlink"
+      style={{ 
+        display: 'block',
+        userSelect: 'none', 
+        backgroundColor: 'transparent',
+        border: '2px dashed red' // Borde temporal para depuración
+      }}
     >
       {defsContent}
-      <rect x="0" y="0" width={width} height={height} fill={backgroundColor} data-testid="svg-background" />
+      
+      {backgroundColor !== 'transparent' && (
+        <rect x="0" y="0" width={width} height={height} fill={backgroundColor} />
+      )}
+      
       <g data-testid="vector-group-container">
+
         {vectors.map((item) => {
           try {
-            // Resolver baseVectorLength y baseVectorWidth para este item específico
             const resolvedBaseLength = typeof baseVectorLength === 'function'
               ? baseVectorLength(item)
               : baseVectorLength;
-            
+
             const resolvedBaseWidth = typeof baseVectorWidth === 'function'
               ? baseVectorWidth(item)
               : baseVectorWidth;
 
-            const { id, baseX, baseY, currentAngle, lengthFactor, widthFactor } = item;
+            // Extraer propiedades del vector con valores por defecto seguros
+            const { id, baseX, baseY, currentAngle } = item;
+            
+            // Depuración para verificar qué forma se está aplicando
+            if (id === 'vector-0-0') {
+              console.log(`Vector ${id} → Forma: ${baseVectorShape}, Ángulo: ${currentAngle}`);
+            }
+            // Asegurar que estos factores sean números válidos
+            const lengthFactor = typeof item.lengthFactor === 'number' && !isNaN(item.lengthFactor) ? item.lengthFactor : 1;
+            const widthFactor = typeof item.widthFactor === 'number' && !isNaN(item.widthFactor) ? item.widthFactor : 1;
 
             const actualLength = lengthFactor * resolvedBaseLength;
-            const actualStrokeWidth = Math.max(0.5, widthFactor * resolvedBaseWidth); // Asegurar un ancho mínimo para visibilidad
-
+            const actualStrokeWidth = Math.max(0.5, widthFactor * resolvedBaseWidth);
             const rotationXOffset = getRotationOffset(baseRotationOrigin, actualLength);
 
-            let fillOrStrokeColor: string = '#ffffff'; // Default color
-            if (typeof baseVectorColor === 'function') {
-              fillOrStrokeColor = baseVectorColor(item, 0, 0, performance.now()); // Placeholder para frame/totalFrames
-            } else if (typeof baseVectorColor === 'object' && baseVectorColor !== null && 'type' in baseVectorColor) {
-              const key = JSON.stringify(baseVectorColor);
-              // Buscar el ID del gradiente global (si se procesó)
-              // Esta lógica de `gradientMap` necesitaría estar accesible o recalcularse aquí de forma consistente.
-              // Simplificación: si es un objeto, asumimos que es un gradiente global y usamos un ID predecible o lo buscamos.
-              // Por ahora, asumimos que `defsContent` ya creó el ID.
-              // Esta parte es compleja si el color es una función que devuelve GradientConfig.
-              // Para este ejemplo, si baseVectorColor es un objeto, intentaremos usar un ID de gradiente.
-              // La memoización de defsContent ya maneja esto.
-               const gradientMap = new Map<string, { config: GradientConfig, id: string }>();
-               if (typeof baseVectorColor === 'object' && baseVectorColor !== null && 'type' in baseVectorColor) {
-                  const id = `global-grad-0`; // ID predecible si solo hay uno global
-                  gradientMap.set(JSON.stringify(baseVectorColor), { config: baseVectorColor, id });
-               }
-              const gradientEntry = gradientMap.get(key);
-              if (gradientEntry) {
-                fillOrStrokeColor = `url(#${gradientEntry.id})`;
-              } else {
-                   // Fallback si es un objeto pero no se encuentra el ID (podría ser error o color por función)
-                   fillOrStrokeColor = typeof baseVectorColor === 'string' ? baseVectorColor : '#ff0000'; // Rojo error
+            // Determinar el color del vector
+            let fillOrStrokeColor: string = '#4a80f5'; // Color por defecto si algo falla
+            
+            try {
+              if (typeof baseVectorColor === 'function') {
+                fillOrStrokeColor = baseVectorColor(item, 0, 0, performance.now());
+              } else if (typeof baseVectorColor === 'object' && baseVectorColor !== null && 'type' in baseVectorColor) {
+                // Buscar el ID del gradiente en el mapa
+                const key = JSON.stringify(baseVectorColor);
+                const gradientId = `global-grad-0`; // Simplificado para este ejemplo
+                fillOrStrokeColor = `url(#${gradientId})`;
+              } else if (typeof baseVectorColor === 'string') {
+                fillOrStrokeColor = baseVectorColor;
               }
-
-            } else if (typeof baseVectorColor === 'string') {
-              fillOrStrokeColor = baseVectorColor;
+            } catch (e) {
+              console.error('Error al procesar el color del vector:', e);
             }
 
-            const groupEventHandlers = {
+            // Props - La key se pasa directamente al JSX
+            const groupProps = {
+              transform: `translate(${baseX.toFixed(3)}, ${baseY.toFixed(3)}) rotate(${currentAngle.toFixed(3)}, ${rotationXOffset.toFixed(3)}, 0)`,
               onClick: onVectorClick ? (e: React.MouseEvent<SVGElement>) => { e.stopPropagation(); onVectorClick(item, e); } : undefined,
               onMouseEnter: onVectorHover ? (e: React.MouseEvent<SVGElement>) => onVectorHover(item, e) : undefined,
-              onMouseLeave: onVectorHover ? (e: React.MouseEvent<SVGElement>) => onVectorHover(null, e) : undefined,
-            };
-
-            // Renombrar 'key' a 'vectorId' para evitar conflictos y usarla explícitamente.
-            const { key: vectorId, ...restGroupProps } = {
-              key: id, // Este es el id del vector, que se usará como key de React
-              transform: `translate(${baseX.toFixed(3)}, ${baseY.toFixed(3)}) rotate(${currentAngle.toFixed(3)}, ${rotationXOffset.toFixed(3)}, 0)`,
-              ...groupEventHandlers
+              onMouseLeave: onVectorHover ? (e: React.MouseEvent<SVGElement>) => onVectorHover(null, e) : undefined
             };
 
             if (customRenderer) {
               const renderProps: VectorRenderProps = {
-                item, dimensions: { width, height }, 
+                item, 
+                dimensions: { width, height }, 
                 baseVectorLength: resolvedBaseLength, 
                 baseVectorColor, 
                 baseVectorWidth: resolvedBaseWidth, 
                 baseStrokeLinecap, 
                 baseVectorShape, 
                 baseRotationOrigin,
-                actualLength, actualStrokeWidth, getRotationOffset,
+                actualLength, 
+                actualStrokeWidth, 
+                getRotationOffset,
               };
-              // Pasar 'vectorId' como key explícita al <g>
-              return <g key={vectorId} {...restGroupProps}>{customRenderer(renderProps)}</g>;
+              
+              return <g key={id} {...groupProps}>{customRenderer(renderProps)}</g>;
             }
 
-            const shapeProps = {
-              stroke: baseVectorShape !== 'dot' && baseVectorShape !== 'triangle' ? fillOrStrokeColor : 'none',
-              fill: baseVectorShape === 'dot' || baseVectorShape === 'triangle' ? fillOrStrokeColor : 'none',
-              strokeWidth: actualStrokeWidth,
-              strokeLinecap: baseStrokeLinecap || 'butt',
-            };
-            if (baseVectorShape === 'arrow') {
-               shapeProps.fill = fillOrStrokeColor; // La cabeza de la flecha se rellena
-            }
+            // Aplicamos los estilos específicos a cada forma según la especificación
 
-
-            switch (baseVectorShape) {
-              case 'userSvg':
-                const userSymbolViewBox = parseViewBox(userSvgString); // Parsear de nuevo o tomar de defsContent
-                if (userSvgString && userSymbolViewBox) {
-                  const { width: vbWidth, height: vbHeight } = userSymbolViewBox;
-                  let scale = 1;
-                  if (vbWidth > 0) {
-                      scale = actualLength / vbWidth; // Escalar para que el ancho del viewBox coincida con actualLength
-                  }
-                  // Para mantener aspect ratio, la altura del <use> debería ser vbHeight
-                  // y el escalado debe ser uniforme si preserveAspectRatio no es 'none'.
-                  // Si preserveAspectRatio es 'none', podrías escalar X e Y independientemente.
-                  // Por simplicidad, usamos un escalado uniforme basado en el ancho.
-                  // La altura efectiva será scale * vbHeight.
-
-                  return (
-                    <g key={vectorId} {...restGroupProps}
-                       // Aplicar color al <g> si el SVG interno usa currentColor
-                       fill={fillOrStrokeColor}
-                       stroke={fillOrStrokeColor}
-                       strokeWidth={actualStrokeWidth} // Esto podría afectar al SVG interno si usa stroke="currentColor"
-                    >
-                      <use
-                        xlinkHref="#userProvidedSymbol"
-                        width={vbWidth}
-                        height={vbHeight}
-                        transform={`scale(${scale.toFixed(3)})`} // Escalar la instancia del symbol
-                        // preserveAspectRatio se aplica en el <symbol>
-                      />
-                    </g>
-                  );
+            // Renderizar forma
+            if (baseVectorShape === 'userSvg') {
+              const userSymbolViewBox = parseViewBox(userSvgString);
+              if (userSvgString && userSymbolViewBox) {
+                const { width: vbWidth, height: vbHeight } = userSymbolViewBox;
+                let scale = 1;
+                
+                if (vbWidth > 0) {
+                  scale = actualLength / vbWidth;
                 }
-                return <g key={vectorId} {...restGroupProps}><circle cx={0} cy={0} r={actualStrokeWidth/2} fill="red" /></g>; // Fallback
-
-              case 'arrow':
-                const arrowHeadSize = Math.min(actualLength * 0.3, actualStrokeWidth * 2 + 5);
-                const lineLength = actualLength - arrowHeadSize * 0.8;
+                
                 return (
-                  <g key={vectorId} {...restGroupProps}>
-                    {lineLength > 0 && (
-                      <line x1={0} y1={0} x2={lineLength} y2={0} {...shapeProps} fill="none"/>
-                    )}
-                    <polygon
-                      points={`${actualLength},0 ${lineLength > 0 ? lineLength : 0},${-arrowHeadSize / 2} ${lineLength > 0 ? lineLength : 0},${arrowHeadSize / 2}`}
-                      fill={fillOrStrokeColor} // La cabeza siempre tiene fill
-                      stroke="none"
+                  <g key={id} {...groupProps}
+                    fill={fillOrStrokeColor}
+                    stroke={fillOrStrokeColor}
+                    strokeWidth={actualStrokeWidth}
+                  >
+                    <use
+                      xlinkHref="#userProvidedSymbol"
+                      width={vbWidth}
+                      height={vbHeight}
+                      transform={`scale(${scale.toFixed(3)})`}
                     />
                   </g>
                 );
-              case 'dot':
-                return <g key={vectorId} {...restGroupProps}><circle cx={0} cy={0} r={actualLength / 2} fill={fillOrStrokeColor} stroke="none" /></g>;
-              case 'triangle':
-                const tipX = actualLength;
-                const halfBaseWidth = actualLength * 0.3 * Math.min(1, widthFactor);
-                return <g key={vectorId} {...restGroupProps}><polygon points={`${tipX},0 0,${-halfBaseWidth} 0,${halfBaseWidth}`} fill={fillOrStrokeColor} stroke="none"/></g>;
-              case 'semicircle':
-                const radiusSemi = actualLength / 2;
-                return <g key={vectorId} {...restGroupProps}><path d={`M 0 0 A ${radiusSemi} ${radiusSemi} 0 0 1 ${actualLength} 0`} {...shapeProps} /></g>;
-              case 'curve':
-                const controlY = -actualLength * 0.3;
-                return <g key={vectorId} {...restGroupProps}><path d={`M 0 0 Q ${actualLength/2} ${controlY} ${actualLength} 0`} {...shapeProps} /></g>;
-              case 'line':
-              default:
-                return <g key={vectorId} {...restGroupProps}><line x1={0} y1={0} x2={actualLength} y2={0} {...shapeProps} /></g>;
+              }
+              
+              return (
+                <g key={id} {...groupProps}>
+                  <circle cx={0} cy={0} r={actualStrokeWidth/2} fill="red" />
+                </g>
+              );
             }
+            
+            if (baseVectorShape === 'arrow') {
+              const arrowHeadSizeArr = Math.min(actualLength * 0.3, actualStrokeWidth * 2 + 5);
+              const lineBodyEndArr = actualLength - arrowHeadSizeArr * 0.8;
+              
+              return (
+                <g key={id} {...groupProps}>
+                  {lineBodyEndArr > 0 && (
+                    <line 
+                      x1={0} 
+                      y1={0} 
+                      x2={lineBodyEndArr} 
+                      y2={0} 
+                      stroke={fillOrStrokeColor} 
+                      strokeWidth={actualStrokeWidth}
+                      strokeLinecap={baseStrokeLinecap || 'butt'} 
+                    />
+                  )}
+                  {actualLength > 0 && (
+                    <polygon
+                      points={`${actualLength},0 ${lineBodyEndArr},${-arrowHeadSizeArr / 2} ${lineBodyEndArr},${arrowHeadSizeArr / 2}`}
+                      fill={fillOrStrokeColor}
+                      stroke="none"
+                    />
+                  )}
+                </g>
+              );
+            }
+            
+            if (baseVectorShape === 'dot') {
+              // Para dot: el radio es actualLength/2, centro en (actualLength/2, 0)
+              const radius = actualLength / 2;
+              return (
+                <g key={id} {...groupProps}>
+                  <circle 
+                    cx={actualLength/2} 
+                    cy={0} 
+                    r={radius} 
+                    fill={fillOrStrokeColor} 
+                    stroke="none" 
+                  />
+                </g>
+              );
+            }
+            
+            if (baseVectorShape === 'triangle') {
+              return (
+                <g key={id} {...groupProps}>
+                  <polygon 
+                    points={`${actualLength},0 0,${-actualStrokeWidth} 0,${actualStrokeWidth}`} 
+                    fill={fillOrStrokeColor} 
+                    stroke="none"
+                  />
+                </g>
+              );
+            }
+            
+            if (baseVectorShape === 'semicircle') {
+              // Para semicircle: diámetro de -actualLength/2 a actualLength/2, centrado en (0,0)
+              const radius = actualLength / 2;
+              
+              return (
+                <g key={id} {...groupProps}>
+                  <path 
+                    d={`M ${-radius} 0 A ${radius} ${radius} 0 0 1 ${radius} 0`} 
+                    stroke={fillOrStrokeColor}
+                    fill="none"
+                    strokeWidth={actualStrokeWidth}
+                    strokeLinecap={baseStrokeLinecap || 'butt'}
+                  />
+                </g>
+              );
+            }
+            
+            if (baseVectorShape === 'curve') {
+              // Para curve: desde (0,0) hasta (actualLength,0) con punto de control 
+              const controlY = -actualLength * (item.animationState?.curveFactor ?? 0.3);
+              
+              return (
+                <g key={id} {...groupProps}>
+                  <path 
+                    d={`M 0 0 Q ${actualLength/2} ${controlY} ${actualLength} 0`} 
+                    stroke={fillOrStrokeColor}
+                    fill="none"
+                    strokeWidth={actualStrokeWidth}
+                    strokeLinecap={baseStrokeLinecap || 'butt'}
+                  />
+                </g>
+              );
+            }
+            
+            // La implementación de la forma 'plus' ha sido eliminada
+            // La implementaremos correctamente en el futuro
+            
+            // Caso default: line
+            return (
+              <g key={id} {...groupProps}>
+                <line 
+                  x1={0} 
+                  y1={0} 
+                  x2={actualLength} 
+                  y2={0} 
+                  stroke={fillOrStrokeColor}
+                  fill="none"
+                  strokeWidth={actualStrokeWidth}
+                  strokeLinecap={baseStrokeLinecap || 'butt'}
+                  data-vectorid={id}
+                />
+              </g>
+            );
           } catch (error) {
             console.error("Error rendering vector", error);
             return null;
