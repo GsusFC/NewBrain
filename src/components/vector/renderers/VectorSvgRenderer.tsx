@@ -27,6 +27,18 @@ interface VectorSvgRendererProps {
   userSvgPreserveAspectRatio?: string;
   onVectorClick?: (item: AnimatedVectorItem, event: React.MouseEvent<SVGElement>) => void;
   onVectorHover?: (item: AnimatedVectorItem | null, event: React.MouseEvent<SVGElement>) => void;
+  // Propiedades dinámicas adicionales
+  getDynamicLength?: (item: AnimatedVectorItem) => number;
+  getDynamicWidth?: (item: AnimatedVectorItem) => number;
+  useDynamicProps?: boolean;
+  // Propiedades adicionales
+  interactionEnabled?: boolean;
+  debugMode?: boolean;
+  frameInfo?: {
+    timestamp: number;
+    frameCount: number;
+    totalFrames: number;
+  };
 }
 
 // Helpers
@@ -39,6 +51,14 @@ const getRotationOffset = (origin: 'start' | 'center' | 'end', length: number): 
 };
 
 interface ParsedViewBox { x: number; y: number; width: number; height: number; }
+
+// Función de utilidad para garantizar valores numéricos seguros para atributos SVG
+const ensureSafeNumber = (value: unknown, defaultValue: number = 0): number => {
+  if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
+    return value;
+  }
+  return defaultValue;
+};
 
 const parseViewBox = (svgString?: string): ParsedViewBox | null => {
   if (!svgString) return null;
@@ -71,27 +91,39 @@ const getSvgInnerContent = (svgString?: string): string => {
 };
 
 // Componente
-const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
-  vectors,
-  width,
-  height,
-  backgroundColor = 'transparent',
-  baseVectorLength,
-  baseVectorColor,
-  baseVectorWidth,
-  baseStrokeLinecap,
-  baseVectorShape,
-  baseRotationOrigin,
-  customRenderer,
-  userSvgString,
-  userSvgPreserveAspectRatio = 'xMidYMid meet',
-  onVectorClick,
-  onVectorHover,
-}) => {
-  const svgRef = useRef<SVGSVGElement>(null);
+const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
+  const {
+    vectors,
+    width,
+    height,
+    backgroundColor = 'transparent',
+    baseVectorLength,
+    baseVectorColor,
+    baseVectorWidth,
+    baseStrokeLinecap,
+    baseVectorShape,
+    baseRotationOrigin,
+    customRenderer,
+    userSvgString,
+    userSvgPreserveAspectRatio = 'xMidYMid meet',
+    onVectorClick,
+    onVectorHover,
+    // Nuevas propiedades dinámicas
+    getDynamicLength,
+    getDynamicWidth,
+    useDynamicProps = false,
+    // Propiedades adicionales
+    interactionEnabled = true,
+    debugMode = false,
+  } = props;
 
-  // Validar dimensiones
-  if (width <= 0 || height <= 0) return null;
+  const svgRef = useRef<SVGSVGElement>(null);
+  
+  // Verificar dimensiones
+  if (width <= 0 || height <= 0) {
+    console.error('Error: Las dimensiones del componente deben ser mayores que cero.');
+    return null;
+  }
 
   // Defs para gradientes y SVG
   const defsContent = useMemo(() => {
@@ -172,6 +204,222 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
     return null;
   }, [baseVectorColor, baseVectorShape, userSvgString, userSvgPreserveAspectRatio]);
 
+  // Función para renderizar cada vector
+  const renderVector = (item: AnimatedVectorItem, index: number) => {
+    try {
+      const resolvedBaseLength = typeof baseVectorLength === 'function'
+        ? baseVectorLength(item)
+        : baseVectorLength;
+
+      const resolvedBaseWidth = typeof baseVectorWidth === 'function'
+        ? baseVectorWidth(item)
+        : baseVectorWidth;
+
+      // Extraer propiedades del vector con valores por defecto seguros
+      const { id, baseX, baseY, currentAngle } = item;
+      
+      // Determinar si usamos props dinámicas o estáticas
+      let actualLength: number;
+      let actualStrokeWidth: number;
+      
+      // Si useDynamicProps está activado y tenemos funciones dinámicas, las usamos directamente
+      if (useDynamicProps && getDynamicLength && getDynamicWidth) {
+        actualLength = ensureSafeNumber(getDynamicLength(item), 30);
+        actualStrokeWidth = ensureSafeNumber(getDynamicWidth(item), 2);
+      } else {
+        // Usar el método tradicional con factores
+        const lengthFactor = typeof item.lengthFactor === 'number' && !isNaN(item.lengthFactor) ? item.lengthFactor : 1;
+        const widthFactor = typeof item.widthFactor === 'number' && !isNaN(item.widthFactor) ? item.widthFactor : 1;
+        
+        // Asegurar que lengthFactor y resolvedBaseLength son números válidos
+        const safeLength = typeof resolvedBaseLength === 'number' && !isNaN(resolvedBaseLength) ? resolvedBaseLength : 20;
+        actualLength = lengthFactor * safeLength;
+        
+        // Asegurar que widthFactor y resolvedBaseWidth son números válidos
+        const safeWidth = typeof resolvedBaseWidth === 'number' && !isNaN(resolvedBaseWidth) ? resolvedBaseWidth : 2;
+        actualStrokeWidth = Math.max(0.5, widthFactor * safeWidth);
+      }
+      
+      // Validación adicional para evitar valores NaN
+      if (isNaN(actualStrokeWidth)) {
+        if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+          console.warn(`strokeWidth es NaN para vector ${id}`);
+        }
+      }
+      
+      const rotationXOffset = getRotationOffset(baseRotationOrigin, actualLength);
+      
+      // Props para el grupo (sin incluir key, ya que debe pasarse directamente al JSX)
+      const groupProps = {
+        transform: `translate(${baseX}, ${baseY}) rotate(${currentAngle}, ${rotationXOffset}, 0)`,
+      };
+
+      // Props de interacción - solo si está habilitada la interacción
+      const interactionProps = interactionEnabled ? {
+        onClick: onVectorClick ? (e: React.MouseEvent<SVGElement>) => onVectorClick(item, e) : undefined,
+        onMouseEnter: onVectorHover ? (e: React.MouseEvent<SVGElement>) => onVectorHover(item, e) : undefined,
+        onMouseLeave: onVectorHover ? (e: React.MouseEvent<SVGElement>) => onVectorHover(null, e) : undefined,
+      } : {};
+      
+      // Determinar el color final (sólido, gradiente o función)
+      let fillOrStrokeColor: string = '#000000';
+      
+      if (typeof baseVectorColor === 'string') {
+        fillOrStrokeColor = baseVectorColor;
+      } else if (typeof baseVectorColor === 'object' && baseVectorColor !== null && 'type' in baseVectorColor) {
+        // Buscar ID del gradiente
+        const key = JSON.stringify(baseVectorColor);
+        const gradientMap = new Map<string, { config: GradientConfig, id: string }>();
+        let gradientIdCounter = 0;
+        
+        if (!gradientMap.has(key)) {
+          const id = `global-grad-${gradientIdCounter++}`;
+          gradientMap.set(key, { config: baseVectorColor, id });
+        }
+        
+        const gradientInfo = gradientMap.get(key);
+        if (gradientInfo) {
+          fillOrStrokeColor = `url(#${gradientInfo.id})`;
+        }
+      }
+      
+      // Si hay un renderizador personalizado, úsalo
+      if (customRenderer) {
+        return customRenderer({
+          id,
+          baseX,
+          baseY,
+          currentAngle,
+          baseVectorLength: actualLength,
+          baseVectorWidth: actualStrokeWidth,
+          fillOrStrokeColor,
+          groupProps: { ...groupProps, ...interactionProps },
+          item,
+        });
+      }
+      
+      // Si se usa SVG personalizado
+      if (baseVectorShape === 'userSvg' && userSvgString) {
+        return (
+          <g key={id || index} {...groupProps} {...interactionProps}>
+            <use
+              href="#userProvidedSymbol"
+              width={ensureSafeNumber(actualLength)}
+              height={ensureSafeNumber(actualLength)}
+              fill={fillOrStrokeColor}
+              stroke="none"
+            />
+          </g>
+        );
+      }
+      
+      // Renderizar vector según su forma
+      if (baseVectorShape === 'arrow') {
+        const arrowHeadSizeArr = Math.min(actualLength * 0.3, actualStrokeWidth * 2 + 5);
+        const lineBodyEndArr = actualLength - arrowHeadSizeArr * 0.8;
+        
+        return (
+          <g key={id || index} {...groupProps} {...interactionProps}>
+            {lineBodyEndArr > 0 && (
+              <line 
+                x1={0} 
+                y1={0} 
+                x2={ensureSafeNumber(lineBodyEndArr, 0)} 
+                y2={0} 
+                stroke={fillOrStrokeColor} 
+                strokeWidth={ensureSafeNumber(actualStrokeWidth, 1)}
+                strokeLinecap={baseStrokeLinecap || 'butt'} 
+              />
+            )}
+            {actualLength > 0 && (
+              <polygon
+                points={`${ensureSafeNumber(actualLength)},0 ${ensureSafeNumber(lineBodyEndArr)},${ensureSafeNumber(-arrowHeadSizeArr / 2)} ${ensureSafeNumber(lineBodyEndArr)},${ensureSafeNumber(arrowHeadSizeArr / 2)}`}
+                fill={fillOrStrokeColor}
+                stroke="none"
+              />
+            )}
+          </g>
+        );
+      } else if (baseVectorShape === 'dot') {
+        // Para dot: el radio es actualLength/2, centro en (actualLength/2, 0)
+        const radius = actualLength / 2;
+        return (
+          <g key={id || index} {...groupProps} {...interactionProps}>
+            <circle 
+              cx={ensureSafeNumber(actualLength/2)} 
+              cy={0} 
+              r={ensureSafeNumber(radius, 5)} 
+              fill={fillOrStrokeColor} 
+              stroke="none" 
+            />
+          </g>
+        );
+      } else if (baseVectorShape === 'triangle') {
+        return (
+          <g key={id || index} {...groupProps} {...interactionProps}>
+            <polygon 
+              points={`${ensureSafeNumber(actualLength)},0 0,${ensureSafeNumber(-actualStrokeWidth)} 0,${ensureSafeNumber(actualStrokeWidth)}`} 
+              fill={fillOrStrokeColor} 
+              stroke="none"
+            />
+          </g>
+        );
+      } else if (baseVectorShape === 'semicircle') {
+        // Para semicircle: diámetro de -actualLength/2 a actualLength/2, centrado en (0,0)
+        const radius = actualLength / 2;
+        
+        return (
+          <g key={id || index} {...groupProps} {...interactionProps}>
+            <path 
+              d={`M ${ensureSafeNumber(-radius)} 0 A ${ensureSafeNumber(radius)} ${ensureSafeNumber(radius)} 0 0 1 ${ensureSafeNumber(radius)} 0`} 
+              stroke={fillOrStrokeColor}
+              fill="none"
+              strokeWidth={ensureSafeNumber(actualStrokeWidth, 1)}
+              strokeLinecap={baseStrokeLinecap || 'butt'}
+            />
+          </g>
+        );
+      } else if (baseVectorShape === 'curve') {
+        // Para curve: desde (0,0) hasta (actualLength,0) con punto de control 
+        const controlY = -actualLength * (item.animationState?.curveFactor ?? 0.3);
+        
+        return (
+          <g key={id || index} {...groupProps} {...interactionProps}>
+            <path 
+              d={`M 0 0 Q ${ensureSafeNumber(actualLength/2)} ${ensureSafeNumber(controlY)} ${ensureSafeNumber(actualLength)} 0`} 
+              stroke={fillOrStrokeColor}
+              fill="none"
+              strokeWidth={ensureSafeNumber(actualStrokeWidth, 1)}
+              strokeLinecap={baseStrokeLinecap || 'butt'}
+            />
+          </g>
+        );
+      } else {
+        // Caso default: line
+        return (
+          <g key={id || index} {...groupProps} {...interactionProps}>
+            <line 
+              x1={0} 
+              y1={0} 
+              x2={ensureSafeNumber(actualLength)} 
+              y2={0} 
+              stroke={fillOrStrokeColor}
+              fill="none"
+              strokeWidth={ensureSafeNumber(actualStrokeWidth, 1)}
+              strokeLinecap={baseStrokeLinecap || 'butt'}
+              data-vectorid={id}
+            />
+          </g>
+        );
+      }
+    } catch (error) {
+      // Reemplazando console.error con una forma más segura de manejar errores
+      console.warn(`Error al renderizar vector ${item?.id}:`, error);
+      return null;
+    }
+  };
+
+  // Crear el elemento SVG
   return (
     <svg
       ref={svgRef}
@@ -184,7 +432,7 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
         display: 'block',
         userSelect: 'none', 
         backgroundColor: 'transparent',
-        border: '2px dashed red' // Borde temporal para depuración
+        border: debugMode ? '2px dashed red' : 'none'
       }}
     >
       {defsContent}
@@ -194,227 +442,21 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = ({
       )}
       
       <g data-testid="vector-group-container">
-
-        {vectors.map((item) => {
-          try {
-            const resolvedBaseLength = typeof baseVectorLength === 'function'
-              ? baseVectorLength(item)
-              : baseVectorLength;
-
-            const resolvedBaseWidth = typeof baseVectorWidth === 'function'
-              ? baseVectorWidth(item)
-              : baseVectorWidth;
-
-            // Extraer propiedades del vector con valores por defecto seguros
-            const { id, baseX, baseY, currentAngle } = item;
-            
-            // Depuración para verificar qué forma se está aplicando
-            if (id === 'vector-0-0') {
-              console.log(`Vector ${id} → Forma: ${baseVectorShape}, Ángulo: ${currentAngle}`);
-            }
-            // Asegurar que estos factores sean números válidos
-            const lengthFactor = typeof item.lengthFactor === 'number' && !isNaN(item.lengthFactor) ? item.lengthFactor : 1;
-            const widthFactor = typeof item.widthFactor === 'number' && !isNaN(item.widthFactor) ? item.widthFactor : 1;
-
-            const actualLength = lengthFactor * resolvedBaseLength;
-            const actualStrokeWidth = Math.max(0.5, widthFactor * resolvedBaseWidth);
-            const rotationXOffset = getRotationOffset(baseRotationOrigin, actualLength);
-
-            // Determinar el color del vector
-            let fillOrStrokeColor: string = '#4a80f5'; // Color por defecto si algo falla
-            
-            try {
-              if (typeof baseVectorColor === 'function') {
-                fillOrStrokeColor = baseVectorColor(item, 0, 0, performance.now());
-              } else if (typeof baseVectorColor === 'object' && baseVectorColor !== null && 'type' in baseVectorColor) {
-                // Buscar el ID del gradiente en el mapa
-                const key = JSON.stringify(baseVectorColor);
-                const gradientId = `global-grad-0`; // Simplificado para este ejemplo
-                fillOrStrokeColor = `url(#${gradientId})`;
-              } else if (typeof baseVectorColor === 'string') {
-                fillOrStrokeColor = baseVectorColor;
-              }
-            } catch (e) {
-              console.error('Error al procesar el color del vector:', e);
-            }
-
-            // Props - La key se pasa directamente al JSX
-            const groupProps = {
-              transform: `translate(${baseX.toFixed(3)}, ${baseY.toFixed(3)}) rotate(${currentAngle.toFixed(3)}, ${rotationXOffset.toFixed(3)}, 0)`,
-              onClick: onVectorClick ? (e: React.MouseEvent<SVGElement>) => { e.stopPropagation(); onVectorClick(item, e); } : undefined,
-              onMouseEnter: onVectorHover ? (e: React.MouseEvent<SVGElement>) => onVectorHover(item, e) : undefined,
-              onMouseLeave: onVectorHover ? (e: React.MouseEvent<SVGElement>) => onVectorHover(null, e) : undefined
-            };
-
-            if (customRenderer) {
-              const renderProps: VectorRenderProps = {
-                item, 
-                dimensions: { width, height }, 
-                baseVectorLength: resolvedBaseLength, 
-                baseVectorColor, 
-                baseVectorWidth: resolvedBaseWidth, 
-                baseStrokeLinecap, 
-                baseVectorShape, 
-                baseRotationOrigin,
-                actualLength, 
-                actualStrokeWidth, 
-                getRotationOffset,
-              };
-              
-              return <g key={id} {...groupProps}>{customRenderer(renderProps)}</g>;
-            }
-
-            // Aplicamos los estilos específicos a cada forma según la especificación
-
-            // Renderizar forma
-            if (baseVectorShape === 'userSvg') {
-              const userSymbolViewBox = parseViewBox(userSvgString);
-              if (userSvgString && userSymbolViewBox) {
-                const { width: vbWidth, height: vbHeight } = userSymbolViewBox;
-                let scale = 1;
-                
-                if (vbWidth > 0) {
-                  scale = actualLength / vbWidth;
-                }
-                
-                return (
-                  <g key={id} {...groupProps}
-                    fill={fillOrStrokeColor}
-                    stroke={fillOrStrokeColor}
-                    strokeWidth={actualStrokeWidth}
-                  >
-                    <use
-                      xlinkHref="#userProvidedSymbol"
-                      width={vbWidth}
-                      height={vbHeight}
-                      transform={`scale(${scale.toFixed(3)})`}
-                    />
-                  </g>
-                );
-              }
-              
-              return (
-                <g key={id} {...groupProps}>
-                  <circle cx={0} cy={0} r={actualStrokeWidth/2} fill="red" />
-                </g>
-              );
-            }
-            
-            if (baseVectorShape === 'arrow') {
-              const arrowHeadSizeArr = Math.min(actualLength * 0.3, actualStrokeWidth * 2 + 5);
-              const lineBodyEndArr = actualLength - arrowHeadSizeArr * 0.8;
-              
-              return (
-                <g key={id} {...groupProps}>
-                  {lineBodyEndArr > 0 && (
-                    <line 
-                      x1={0} 
-                      y1={0} 
-                      x2={lineBodyEndArr} 
-                      y2={0} 
-                      stroke={fillOrStrokeColor} 
-                      strokeWidth={actualStrokeWidth}
-                      strokeLinecap={baseStrokeLinecap || 'butt'} 
-                    />
-                  )}
-                  {actualLength > 0 && (
-                    <polygon
-                      points={`${actualLength},0 ${lineBodyEndArr},${-arrowHeadSizeArr / 2} ${lineBodyEndArr},${arrowHeadSizeArr / 2}`}
-                      fill={fillOrStrokeColor}
-                      stroke="none"
-                    />
-                  )}
-                </g>
-              );
-            }
-            
-            if (baseVectorShape === 'dot') {
-              // Para dot: el radio es actualLength/2, centro en (actualLength/2, 0)
-              const radius = actualLength / 2;
-              return (
-                <g key={id} {...groupProps}>
-                  <circle 
-                    cx={actualLength/2} 
-                    cy={0} 
-                    r={radius} 
-                    fill={fillOrStrokeColor} 
-                    stroke="none" 
-                  />
-                </g>
-              );
-            }
-            
-            if (baseVectorShape === 'triangle') {
-              return (
-                <g key={id} {...groupProps}>
-                  <polygon 
-                    points={`${actualLength},0 0,${-actualStrokeWidth} 0,${actualStrokeWidth}`} 
-                    fill={fillOrStrokeColor} 
-                    stroke="none"
-                  />
-                </g>
-              );
-            }
-            
-            if (baseVectorShape === 'semicircle') {
-              // Para semicircle: diámetro de -actualLength/2 a actualLength/2, centrado en (0,0)
-              const radius = actualLength / 2;
-              
-              return (
-                <g key={id} {...groupProps}>
-                  <path 
-                    d={`M ${-radius} 0 A ${radius} ${radius} 0 0 1 ${radius} 0`} 
-                    stroke={fillOrStrokeColor}
-                    fill="none"
-                    strokeWidth={actualStrokeWidth}
-                    strokeLinecap={baseStrokeLinecap || 'butt'}
-                  />
-                </g>
-              );
-            }
-            
-            if (baseVectorShape === 'curve') {
-              // Para curve: desde (0,0) hasta (actualLength,0) con punto de control 
-              const controlY = -actualLength * (item.animationState?.curveFactor ?? 0.3);
-              
-              return (
-                <g key={id} {...groupProps}>
-                  <path 
-                    d={`M 0 0 Q ${actualLength/2} ${controlY} ${actualLength} 0`} 
-                    stroke={fillOrStrokeColor}
-                    fill="none"
-                    strokeWidth={actualStrokeWidth}
-                    strokeLinecap={baseStrokeLinecap || 'butt'}
-                  />
-                </g>
-              );
-            }
-            
-            // La implementación de la forma 'plus' ha sido eliminada
-            // La implementaremos correctamente en el futuro
-            
-            // Caso default: line
-            return (
-              <g key={id} {...groupProps}>
-                <line 
-                  x1={0} 
-                  y1={0} 
-                  x2={actualLength} 
-                  y2={0} 
-                  stroke={fillOrStrokeColor}
-                  fill="none"
-                  strokeWidth={actualStrokeWidth}
-                  strokeLinecap={baseStrokeLinecap || 'butt'}
-                  data-vectorid={id}
-                />
-              </g>
-            );
-          } catch (error) {
-            console.error("Error rendering vector", error);
-            return null;
-          }
-        })}
+        {vectors.map(renderVector)}
       </g>
+      
+      {debugMode && (
+        <rect 
+          x="0" 
+          y="0" 
+          width={width} 
+          height={height} 
+          stroke="blue" 
+          strokeWidth="1" 
+          fill="none" 
+          strokeDasharray="5,5" 
+        />
+      )}
     </svg>
   );
 };

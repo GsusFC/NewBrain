@@ -9,9 +9,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/
 import { Separator } from '@/components/ui/separator';
 import { 
   ColorControlGradient, 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   GradientType, 
   GradientStop, 
   PREDEFINED_PALETTES,
+  ColorPalette,
 } from '../core/color-types';
 import { VectorColorValue, GradientConfig } from '../core/types';
 
@@ -194,6 +196,7 @@ export function ColorControl({
   }, [effectiveValue, isFunction, convertFromSystemGradient]);
   
   // Maneja cambios en el gradiente
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const updateGradient = useCallback(() => {
     // Solo aplicar si el tipo de color es 'gradient'
     if (colorType === 'gradient') {
