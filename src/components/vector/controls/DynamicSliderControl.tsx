@@ -9,11 +9,13 @@ interface SliderControlProps {
   label: string;
   value: number;
   onChange: (value: number) => void;
-  onChangeEnd?: () => void; // Añadimos this para que coincida con el componente actualizado
+  onChangeEnd?: () => void; 
   min: number;
   max: number;
   step: number;
   className?: string;
+  minLabel?: string; 
+  maxLabel?: string; 
 }
 
 /**

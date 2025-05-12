@@ -123,25 +123,23 @@ export function SliderControl({
         <div className="relative flex-1">
           <Slider
             id={`slider-${label}`}
+            value={[safeValue]}
             min={min}
             max={max}
             step={step}
-            value={[safeValue]}
             onValueChange={handleSliderChange}
             // Al soltar el ratón:
             onPointerUp={handleSliderChangeComplete}
-            className="[&_[role=slider]]:h-5 [&_[role=slider]]:w-5 [&_[role=slider]]:border-2 [&_[role=slider]]:border-primary/50 [&_[role=slider]]:shadow-md [&_[role=slider]]:transition-all [&_[role=slider]]:duration-200 [&_[role=slider]]:hover:scale-110 [&_[role=slider]]:focus:scale-110 [&_[role=slider]]:data-[dragging=true]:scale-110 [&_.SliderTrack]:h-2 [&_.SliderRange]:h-2 data-[focus]:outline-none"
+            className="[&_[role=slider]]:h-5 [&_[role=slider]]:w-5 [&_[role=slider]]:border-2 [&_[role=slider]]:border-[#4a80f5]/50 [&_[role=slider]]:shadow-md [&_[role=slider]]:transition-all [&_[role=slider]]:duration-200 [&_[role=slider]]:hover:scale-110 [&_[role=slider]]:focus:scale-110 [&_[role=slider]]:data-[dragging=true]:scale-110 [&_.SliderTrack]:h-2 [&_.SliderRange]:h-2 [&_.SliderRange]:bg-[#4a80f5] hover:[&_.SliderRange]:bg-[#4a80f5] data-[focus]:outline-none"
           />
         </div>
         <Input
-          type="number"
+          type="text"
+          inputMode="numeric"
           value={inputValue}
           onChange={handleInputChange}
           onBlur={handleInputBlur}
-          className="w-20 h-8 text-xs text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          min={min}
-          max={max}
-          step={step}
+          className="w-20 h-8 text-xs text-right"
         />
       </div>
     </div>
@@ -170,12 +168,12 @@ export function SelectControl({
         {label}
       </Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={`select-${label}`} className="w-full">
+        <SelectTrigger id={`select-${label}`} className="w-full h-8 text-xs">
           <SelectValue placeholder={`Seleccionar ${label}`} />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="text-xs">
           {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
+            <SelectItem key={option.value} value={option.value} className="text-xs">
               {option.label}
             </SelectItem>
           ))}
@@ -200,15 +198,18 @@ export function SwitchControl({
   className = "",
 }: SwitchControlProps) {
   return (
-    <div className={`flex items-center justify-between ${className}`}>
-      <Label htmlFor={`switch-${label}`} className="text-sm font-medium">
-        {label}
-      </Label>
-      <Switch
-        id={`switch-${label}`}
-        checked={checked}
-        onCheckedChange={onCheckedChange}
-      />
+    <div className={`flex flex-col gap-2 p-3 rounded-lg border border-slate-200 hover:border-[#4a80f5]/70 transition-all ${checked ? 'bg-[#4a80f5]/10' : 'bg-slate-50'} ${className}`}>
+      <div className="flex items-center justify-between w-full">
+        <Label htmlFor={`switch-${label}`} className="text-sm font-medium">
+          {label}
+        </Label>
+        <Switch
+          id={`switch-${label}`}
+          checked={checked}
+          onCheckedChange={onCheckedChange}
+          className="data-[state=checked]:bg-[#4a80f5] h-6 w-11"
+        />
+      </div>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useRef, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { VectorGrid } from '@/components/vector/VectorGrid';
 import { useContainerDimensions } from '@/hooks/vector/useContainerDimensions';
-import { AnimationType } from '@/components/vector/core/animations/animationTypes';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LeftPanel } from '@/components/vector/LeftPanel';
@@ -20,7 +20,8 @@ export default function VectorTestBasicPage() {
   
   // Estados para controles básicos
   const [renderAsCanvas, setRenderAsCanvas] = useState(true);
-  const [showLeftPanel] = useState(true); // Siempre visible por ahora
+  const [useDynamicProps, setUseDynamicProps] = useState(false);
+  const [showLeftPanel, setShowLeftPanel] = useState(true);
   
   // Estado para la configuración del grid
   const [gridConfig, setGridConfig] = useState({
@@ -42,8 +43,8 @@ export default function VectorTestBasicPage() {
 
   // Estados para las animaciones
   const [animationSettings, setAnimationSettings] = useState<AnimationSettings>({
-    animationType: 'none' as AnimationType,
-    animationProps: {}, // Asegurar que nunca sea undefined
+    animationType: 'none',
+    animationProps: {},
     isPaused: false,
     easingFactor: 0.1,
     timeScale: 1,
@@ -58,7 +59,7 @@ export default function VectorTestBasicPage() {
   }, []);
   
   // Manejar cambios en la configuración de animación
-  const handleAnimationChange = useCallback((newSettings: Partial<AnimationSettings>) => {
+  const handleAnimationSettingsChange = useCallback((newSettings: Partial<AnimationSettings>) => {
     setAnimationSettings(prev => ({ ...prev, ...newSettings }));
   }, []);
 
@@ -68,109 +69,22 @@ export default function VectorTestBasicPage() {
   };
 
   // Manejar cambios en el estilo del vector
-  const handleVectorStyleChange = (key: keyof typeof vectorStyle, value: unknown) => {
+  const handleVectorStyleChange = (key: keyof typeof vectorStyle, value: any) => {
     setVectorStyle({ ...vectorStyle, [key]: value });
   };
 
   return (
     <main className="flex h-screen w-full overflow-hidden bg-background dark:bg-[#1e1e2d]">
-      {/* Panel izquierdo con animaciones */}
-      {showLeftPanel && (
-        <div className="w-64 border-r border-border bg-muted p-4 overflow-y-auto">
-          <LeftPanel 
-            animationSettings={animationSettings}
-            onAnimationChange={handleAnimationChange}
-          />
-        </div>
-      )}
-
-      {/* Área principal con el VectorGrid (en el centro) */}
-      <div className="flex-1 flex flex-col bg-background dark:bg-[#1e1e2d]">
-        {/* Menú superior */}
-        <div className="h-12 border-b border-border bg-muted px-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <button className="px-3 py-1 rounded text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-              Exportar
-            </button>
-            <button className="px-3 py-1 rounded text-xs font-medium bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 transition-colors">
-              Capturar
-            </button>
-          </div>
-          <div className="flex items-center space-x-3">
-            <SwitchControl
-              label="Canvas"
-              checked={renderAsCanvas}
-              onCheckedChange={setRenderAsCanvas}
-            />
-            <SwitchControl
-              label="Auto-Actualizar"
-              checked={true}
-              onCheckedChange={() => {}}
-            />
-          </div>
-        </div>
-        
-        {/* Contenedor central con VectorGrid */}
-        <div className="flex-1 p-4 overflow-hidden">
-          <div 
-            ref={containerRef}
-            className="w-full h-full relative bg-background dark:bg-[#1e1e2d] overflow-hidden flex items-center justify-center"
-          >
-            <VectorGrid
-              renderAsCanvas={renderAsCanvas}
-              backgroundColor="#1e1e2d" 
-              gridSettings={{
-                rows: gridConfig.rows,
-                cols: gridConfig.cols,
-                spacing: gridConfig.spacing,
-                margin: gridConfig.margin,
-              }}
-              vectorSettings={{
-                vectorShape: vectorStyle.vectorShape,
-                vectorLength: vectorStyle.staticLength,
-                vectorWidth: vectorStyle.staticWidth,
-                vectorColor: vectorStyle.color,
-                rotationOrigin: vectorStyle.rotationOrigin,
-                strokeLinecap: vectorStyle.strokeLinecap
-              }}
-              animationType={animationSettings.animationType}
-              animationProps={animationSettings.animationProps}
-              easingFactor={animationSettings.easingFactor}
-              timeScale={animationSettings.timeScale}
-              dynamicLengthEnabled={animationSettings.dynamicLengthEnabled}
-              dynamicWidthEnabled={animationSettings.dynamicWidthEnabled}
-              dynamicIntensity={animationSettings.dynamicIntensity}
-              isPaused={animationSettings.isPaused}
-              onPulseComplete={handlePulseComplete}
-              width={dimensions.width}
-              height={dimensions.height}
-              containerFluid={true}
-            />
-          </div>
-        </div>
-        
-        {/* Menú inferior */}
-        <div className="h-12 border-t border-border bg-muted px-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="text-xs text-muted-foreground">Vectores: {gridConfig.rows * gridConfig.cols}</div>
-            <div className="text-xs text-muted-foreground">|</div>
-            <div className="text-xs text-muted-foreground">FPS: 60</div>
-          </div>
-          <div className="flex items-center space-x-3">
-            <button className="px-3 py-1 rounded text-xs font-medium bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 transition-colors">
-              Optimizar Culling
-            </button>
-            <button className="px-3 py-1 rounded text-xs font-medium bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 transition-colors">
-              SVG Personalizado
-            </button>
-          </div>
-        </div>
-      </div>
-      
-      {/* Panel derecho con controles generales */}
-      <div className="w-64 border-l border-border bg-muted p-4 flex flex-col gap-6 overflow-y-auto">
+      {/* Panel lateral izquierdo con controles generales */}
+      <div className="w-64 border-r border-border bg-muted p-4 flex flex-col gap-6 overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium">Controles Generales</h3>
+          <SwitchControl 
+            label="Canvas" 
+            checked={renderAsCanvas} 
+            onChange={setRenderAsCanvas}
+            size="sm" 
+          />
         </div>
 
         <div className="space-y-4">
@@ -304,6 +218,55 @@ export default function VectorTestBasicPage() {
               </Select>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Panel central con animaciones */}
+      {showLeftPanel && (
+        <div className="w-64 border-r border-border bg-muted p-4 overflow-y-auto">
+          <LeftPanel 
+            animationSettings={animationSettings}
+            onAnimationSettingsChange={handleAnimationSettingsChange}
+          />
+        </div>
+      )}
+
+      {/* Área principal con el VectorGrid */}
+      <div className="flex-1 flex items-center justify-center bg-background dark:bg-[#1e1e2d] p-4">
+        <div 
+          ref={containerRef}
+          className="w-full h-full relative bg-background dark:bg-[#1e1e2d] overflow-hidden flex items-center justify-center"
+        >
+          <VectorGrid
+            renderAsCanvas={renderAsCanvas}
+            backgroundColor="#1e1e2d" 
+            gridSettings={{
+              rows: gridConfig.rows,
+              cols: gridConfig.cols,
+              spacing: gridConfig.spacing,
+              margin: gridConfig.margin,
+            }}
+            vectorSettings={{
+              vectorShape: vectorStyle.vectorShape,
+              vectorLength: vectorStyle.staticLength,
+              vectorWidth: vectorStyle.staticWidth,
+              vectorColor: vectorStyle.color,
+              rotationOrigin: vectorStyle.rotationOrigin,
+              strokeLinecap: vectorStyle.strokeLinecap
+            }}
+            animationType={animationSettings.animationType}
+            animationProps={animationSettings.animationProps}
+            easingFactor={animationSettings.easingFactor}
+            timeScale={animationSettings.timeScale}
+            dynamicLengthEnabled={animationSettings.dynamicLengthEnabled}
+            dynamicWidthEnabled={animationSettings.dynamicWidthEnabled}
+            dynamicIntensity={animationSettings.dynamicIntensity}
+            isPaused={animationSettings.isPaused}
+            onPulseComplete={handlePulseComplete}
+            width={dimensions.width}
+            height={dimensions.height}
+            containerFluid={true}
+          />
         </div>
       </div>
     </main>

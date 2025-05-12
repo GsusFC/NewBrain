@@ -1,7 +1,7 @@
 // Ruta: src/components/vector/renderers/VectorCanvasRenderer.tsx
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import type { 
   AnimatedVectorItem,
   VectorColorValue,
@@ -10,6 +10,20 @@ import type {
   RotationOrigin,
   GradientConfig,
 } from '../core/types';
+
+// Importar Canvg para renderizado de SVG en canvas
+// Nota: Esto requiere instalar la dependencia si no está ya instalada
+// npm install canvg o yarn add canvg
+let Canvg: any;
+
+// Cargar Canvg de forma dinámica solo en el cliente
+if (typeof window !== 'undefined') {
+  import('canvg').then((module) => {
+    Canvg = module.Canvg;
+  }).catch(err => {
+    console.error('Error al cargar Canvg:', err);
+  });
+}
 
 // --- Props del Componente Renderer ---
 interface VectorCanvasRendererProps {
@@ -58,13 +72,68 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
   baseVectorShape,
   baseRotationOrigin,
   customRenderer,
+  userSvgString,
+  userSvgPreserveAspectRatio,
   onVectorClick,
   onVectorHover,
   interactionEnabled = true
 }) => {
+  // Referencia para el canvas principal
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [hoveredVectorId, setHoveredVectorId] = React.useState<string | null>(null);
+  
+  // Referencia para el cache de SVG
+  const userSvgCacheRef = useRef<HTMLCanvasElement | null>(null);
+  
+  // Estado para vectores resaltados (hover)
+  const [hoveredVectorId, setHoveredVectorId] = useState<string | null>(null);
 
+  // Efecto para renderizar SVG en un canvas separado (cache)
+  useEffect(() => {
+    if (!userSvgString || !Canvg) {
+      // Si no hay SVG o no se ha cargado Canvg, limpiar la referencia
+      userSvgCacheRef.current = null;
+      return;
+    }
+    
+    // Función para crear el cache de SVG
+    const createSvgCache = async () => {
+      try {
+        // Crear un canvas temporal
+        const cacheCanvas = document.createElement('canvas');
+        const ctx = cacheCanvas.getContext('2d');
+        if (!ctx) {
+          console.error('No se pudo obtener contexto 2D para el cache de SVG');
+          return;
+        }
+        
+        // Tamaño base para el SVG (luego se escala al renderizar)
+        cacheCanvas.width = 100;
+        cacheCanvas.height = 100;
+        
+        // Limpiar el canvas
+        ctx.clearRect(0, 0, cacheCanvas.width, cacheCanvas.height);
+        
+        // Renderizar el SVG en el canvas usando Canvg
+        const v = await Canvg.from(ctx, userSvgString, {
+          ignoreMouse: true,
+          ignoreAnimation: true,
+          preserveAspectRatio: userSvgPreserveAspectRatio || 'xMidYMid meet'
+        });
+        
+        await v.render();
+        
+        // Guardar el canvas en la referencia
+        userSvgCacheRef.current = cacheCanvas;
+        console.log('SVG renderizado correctamente en cache');
+      } catch (err) {
+        console.error('Error al renderizar SVG en cache:', err);
+        userSvgCacheRef.current = null;
+      }
+    };
+    
+    createSvgCache();
+  }, [userSvgString, userSvgPreserveAspectRatio]);
+  
   // Efecto principal para el renderizado
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -96,21 +165,33 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
       ctx.fillRect(0, 0, width, height);
     }
 
+    // Función auxiliar para asegurar que un valor sea finito
+    const ensureFinite = (value: number, defaultValue: number = 0): number => {
+      return isFinite(value) ? value : defaultValue;
+    };
+    
     // Renderizar cada vector
     vectors.forEach(item => {
-      const { baseX, baseY, currentAngle, lengthFactor = 1, widthFactor = 1 } = item;
+      const { baseX, baseY, currentAngle, lengthFactor = 1, widthFactor = 1, shape: itemShape } = item;
       
-      // Determinar longitud y ancho del vector
-      const actualVectorLength = typeof baseVectorLength === 'function' 
+      // Determinar la forma a utilizar (del item o la base)
+      const vectorShape = itemShape || baseVectorShape;
+      
+      // Determinar longitud y ancho del vector - con validación de valores finitos
+      let actualVectorLength = typeof baseVectorLength === 'function' 
         ? baseVectorLength(item) * lengthFactor 
         : baseVectorLength * lengthFactor;
       
-      const actualStrokeWidth = typeof baseVectorWidth === 'function'
+      let actualStrokeWidth = typeof baseVectorWidth === 'function'
         ? baseVectorWidth(item) * widthFactor
         : baseVectorWidth * widthFactor;
       
-      // Calcular offset de rotación
-      const rotationOffset = getRotationOffset(baseRotationOrigin, actualVectorLength);
+      // Asegurar que los valores sean finitos
+      actualVectorLength = ensureFinite(actualVectorLength, 10); // Valor predeterminado de 10px
+      actualStrokeWidth = ensureFinite(actualStrokeWidth, 1);   // Valor predeterminado de 1px
+      
+      // Calcular offset de rotación con validación
+      const rotationOffset = ensureFinite(getRotationOffset(baseRotationOrigin, actualVectorLength));
       
       // Guardar estado del contexto
       ctx.save();
@@ -143,36 +224,76 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
           try {
             let gradient: CanvasGradient;
             
+            // Función auxiliar para asegurar valores numéricos finitos
+            const ensureFinite = (value: number, defaultValue: number = 0): number => {
+              return isFinite(value) ? value : defaultValue;
+            };
+            
             if (gradConfig.type === 'linear') {
-              // Gradiente lineal
-              const x1 = Number(gradConfig.coords.x1 ?? 0) * unitFactorX;
-              const y1 = Number(gradConfig.coords.y1 ?? 0) * unitFactorY;
-              const x2 = Number(gradConfig.coords.x2 ?? 1) * unitFactorX;
-              const y2 = Number(gradConfig.coords.y2 ?? 0) * unitFactorY;
+              // Gradiente lineal con validación
+              // Extraer valores base
+              let x1 = Number(gradConfig.coords?.x1 ?? 0);
+              let y1 = Number(gradConfig.coords?.y1 ?? 0);
+              let x2 = Number(gradConfig.coords?.x2 ?? 1);
+              let y2 = Number(gradConfig.coords?.y2 ?? 0);
+              
+              // Validar valores y usar valores por defecto si no son finitos
+              x1 = ensureFinite(x1, 0);
+              y1 = ensureFinite(y1, 0);
+              x2 = ensureFinite(x2, 1); // Valor por defecto 1 para x2
+              y2 = ensureFinite(y2, 0);
+              
+              // Aplicar escalado
+              x1 = ensureFinite(x1 * unitFactorX, 0);
+              y1 = ensureFinite(y1 * unitFactorY, 0);
+              x2 = ensureFinite(x2 * unitFactorX, unitFactorX);
+              y2 = ensureFinite(y2 * unitFactorY, 0);
               
               gradient = ctx.createLinearGradient(x1, y1, x2, y2);
             } else {
-              // Gradiente radial
-              const cx = Number(gradConfig.coords.cx ?? 0.5) * unitFactorX;
-              const cy = Number(gradConfig.coords.cy ?? 0) * unitFactorY;
-              const r = Number(gradConfig.coords.r ?? 0.5) * Math.min(unitFactorX, unitFactorY);
+              // Gradiente radial con validación
+              // Extraer valores base
+              let cx = Number(gradConfig.coords?.cx ?? 0.5);
+              let cy = Number(gradConfig.coords?.cy ?? 0.5);
+              let r = Number(gradConfig.coords?.r ?? 0.5);
+              let fx = Number(gradConfig.coords?.fx ?? cx);
+              let fy = Number(gradConfig.coords?.fy ?? cy);
               
-              // Valores opcionales para radial
-              const fx = Number(gradConfig.coords.fx ?? gradConfig.coords.cx ?? 0.5) * unitFactorX;
-              const fy = Number(gradConfig.coords.fy ?? gradConfig.coords.cy ?? 0) * unitFactorY;
+              // Validar valores
+              cx = ensureFinite(cx, 0.5);
+              cy = ensureFinite(cy, 0.5);
+              r = ensureFinite(r, 0.5);
+              fx = ensureFinite(fx, cx);
+              fy = ensureFinite(fy, cy);
+              
+              // Aplicar escalado
+              cx = ensureFinite(cx * unitFactorX, unitFactorX * 0.5);
+              cy = ensureFinite(cy * unitFactorY, unitFactorY * 0.5);
+              r = ensureFinite(r * Math.max(unitFactorX, unitFactorY), Math.max(unitFactorX, unitFactorY) * 0.5);
+              fx = ensureFinite(fx * unitFactorX, cx);
+              fy = ensureFinite(fy * unitFactorY, cy);
               
               gradient = ctx.createRadialGradient(
-                cx, cy, 0, // Origen interno del gradiente
-                fx, fy, r  // Origen externo y radio final
+                fx, fy, 0, // Origen interno del gradiente
+                cx, cy, r  // Origen externo y radio final
               );
             }
             
-            // Añadir paradas de color
+            // Añadir paradas de color con validación
             for (const stop of gradConfig.stops) {
-              gradient.addColorStop(
-                stop.offset, 
-                stop.color
-              );
+              try {
+                // Asegurar que el offset sea un número finito entre 0 y 1
+                let offset = Number(stop.offset);
+                offset = ensureFinite(offset, 0);
+                offset = Math.max(0, Math.min(1, offset)); // Limitar entre 0 y 1
+                
+                gradient.addColorStop(
+                  offset, 
+                  stop.color || '#000000' // Valor por defecto si el color es inválido
+                );
+              } catch (err) {
+                console.error('Error al añadir parada de color:', err);
+              }
             }
             
             styleColor = gradient;
@@ -261,6 +382,45 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
           break;
         }
         
+        case 'userSvg':
+        case 'custom': {
+          // Renderizar SVG desde el cache si existe
+          if (userSvgCacheRef.current && userSvgString) {
+            try {
+              // Calcular dimensiones para mantener proporciones
+              const svgSize = Math.max(actualVectorLength, actualStrokeWidth * 5);
+              const svgScale = svgSize / 100; // El cache se renderiza a 100x100
+              
+              // Centrar el SVG en el punto de origen
+              const offsetX = 0; // Podemos ajustar esto para alinear mejor
+              const offsetY = -svgSize / 2; // Centrar verticalmente
+              
+              // Dibujar el SVG cacheado
+              ctx.drawImage(
+                userSvgCacheRef.current,
+                offsetX, offsetY, // Posición de destino
+                svgSize, svgSize  // Tamaño de destino
+              );
+              
+              // Mostrar debug info si es necesario (quitar en producción)
+              console.log(`SVG renderizado: tamaño ${svgSize}px, escala ${svgScale}`);
+            } catch (err) {
+              console.error('Error al renderizar SVG cacheado:', err);
+              
+              // Fallback: Renderizar un rectángulo simple como indicador de error
+              ctx.fillStyle = 'rgba(255,0,0,0.3)';
+              ctx.fillRect(0, -actualStrokeWidth, actualVectorLength, actualStrokeWidth * 2);
+              ctx.strokeRect(0, -actualStrokeWidth, actualVectorLength, actualStrokeWidth * 2);
+            }
+          } else {
+            // SVG no disponible - mostrar un marcador simple
+            ctx.fillStyle = 'rgba(200,200,200,0.5)';
+            ctx.fillRect(0, -actualStrokeWidth, actualVectorLength, actualStrokeWidth * 2);
+            ctx.strokeRect(0, -actualStrokeWidth, actualVectorLength, actualStrokeWidth * 2);
+          }
+          break;
+        }
+        
         case 'line':
         default: {
           // Línea simple (caso base, por defecto)
@@ -286,6 +446,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
     baseVectorShape, 
     baseRotationOrigin,
     customRenderer,
+    userSvgString, // Incluir SVG string para re-renderizar cuando cambie
     // No incluimos onVectorClick y onVectorHover ya que no afectan al renderizado,
     // solo a la interactividad que se maneja en los event handlers
     hoveredVectorId
