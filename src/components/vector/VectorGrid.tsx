@@ -43,7 +43,7 @@ const DEFAULT_ANIMATION_SETTINGS: AnimationSettings = {
 };
 
 
-const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
+export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
   (
     {
       width = 600, 
@@ -227,21 +227,13 @@ const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
     }));
 
     if (currentDimensions.width === 0 || currentDimensions.height === 0) {
-      return <div ref={gridContainerRefInternal} className={className} style={{ ...style, width: '100%', height: '100%' }} />;
+      return <div ref={gridContainerRefInternal} />;
     }
 
     return (
       <div
         ref={gridContainerRefInternal} 
-        className={`vector-grid-container ${className}`}
-        style={{
-          width: containerFluid ? '100%' : `${width}px`,
-          height: containerFluid ? '100%' : `${height}px`,
-          position: 'relative',
-          overflow: 'hidden',
-          backgroundColor: renderAsCanvas ? backgroundColor : undefined, 
-          ...style,
-        }}
+        className="vector-grid-container"
       >
         {!renderAsCanvas && (
           <VectorSvgRenderer 
@@ -298,5 +290,4 @@ const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
 );
 
 VectorGrid.displayName = 'VectorGrid';
-export { VectorGrid };
 export type { VectorGridProps, VectorGridRef };

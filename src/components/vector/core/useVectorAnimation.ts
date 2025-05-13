@@ -58,7 +58,7 @@ const calculateTargetAngle_SmoothWaves = (
   } = props;
   
   // Tiempo escalado para la animación
-  const timeComponent = timestamp * waveFrequency * timeScale;
+  const timeComponent = timestamp * (waveFrequency as number) * timeScale;
   
   // Patrón de ondas - elegir según el tipo especificado
   let oscillation = 0;
@@ -79,38 +79,42 @@ const calculateTargetAngle_SmoothWaves = (
       // que la distancia euclidiana y suficiente para efectos visuales
       const dx = Math.abs(item.baseX - center.x);
       const dy = Math.abs(item.baseY - center.y);
-      const distance = (dx + dy) * patternScale * 0.5; // Factor 0.5 para ajustar escala
+      const distance = (dx + dy) * (patternScale as number) * 0.5; // Factor 0.5 para ajustar escala
       
       // Aplicar una función de onda más simple con menos operaciones
-      oscillation = Math.sin(timeComponent - distance) * waveAmplitude;
+      oscillation = Math.sin(timeComponent - distance) * (waveAmplitude as number);
       break;
     }
     case 'diagonal': {
       // Patrón diagonal (ondas que se mueven en diagonal)
-      const diagonal = (item.baseX + item.baseY) * patternScale;
+      const diagonal = (item.baseX + item.baseY) * (patternScale as number);
       // Patrón diagonal (ondas que se mueven en diagonal)
-      oscillation = Math.sin(timeComponent + diagonal) * waveAmplitude;
+      oscillation = Math.sin(timeComponent + diagonal) * (waveAmplitude as number);
       break;
     }
     case 'linear':
     default: {
       // Patrón lineal simple (más eficiente)
-      const xComponent = item.baseX * patternScale;
-      const yComponent = item.baseY * patternScale * 0.5;
-      oscillation = Math.sin(timeComponent + xComponent + yComponent) * waveAmplitude;
+      const xComponent = item.baseX * (patternScale as number);
+      const yComponent = item.baseY * (patternScale as number) * 0.5;
+      oscillation = Math.sin(timeComponent + xComponent + yComponent) * (waveAmplitude as number);
       break;
     }
   }
   
-  return baseAngle + oscillation;
+  return (baseAngle as number) + oscillation;
 };
 
 const calculateTargetAngle_MouseInteraction = (
   item: AnimatedVectorItem,
   mousePosition: Victor | null,
-  props: Record<string, any>
+  props: Record<string, unknown>
 ): number => {
-  const { repulsionDistance = 150, attractionDistance = 50, alignAngle = 0 } = props;
+  const { repulsionDistance = 150, attractionDistance = 50, alignAngle = 0 } = props as {
+    repulsionDistance?: number,
+    attractionDistance?: number,
+    alignAngle?: number
+  };
   if (!mousePosition) return item.initialAngle;
 
   const vectorPos = new Victor(item.baseX, item.baseY);
@@ -130,17 +134,25 @@ const calculateTargetAngle_CenterPulse = (
   timestamp: number, // Tiempo actual del sistema (performance.now())
   pulseStartTime: number, // performance.now() cuando se activó el pulso
   dimensions: { width: number; height: number },
-  props: Record<string, any>
+  props: Record<string, unknown>
 ): { angle: number; lengthFactor?: number; widthFactor?: number, completed?: boolean } => {
   const {
     pulseDuration = 800, // Duración del efecto principal del pulso
-    pulsePropagationSpeed = 0.5, // 0-1, velocidad de la onda (más alto es más rápido)
-    maxDistanceEffect = 0.8, // Qué tan lejos se propaga el efecto principal (0-1 del radio máximo)
-    outwardAngleOffset = 0, // Desfase angular para el ángulo de salida
-    returnToTangential = true, // Si debe volver a un ángulo tangencial después del pulso
-    postPulseOscillationDuration = 500, // Duración de la oscilación post-pulso
-    postPulseOscillationAmplitude = 15, // Amplitud de la oscilación
-  } = props;
+    pulseCenter = { x: 0.5, y: 0.5 }, // Centro del pulso (normalizado de 0 a 1)
+    maxDistanceFactor = 1.5, // Factor para el cálculo de distancia máxima
+    pulsePropagationSpeed = 1,
+    maxAngleDisplacement = 90, // Desplazamiento máximo del ángulo en grados
+    maxLengthFactor = 1.3, // Factor máximo de estiramiento
+    affectAngle = true // Si el pulso afecta al ángulo o no
+  } = props as {
+    pulseDuration?: number,
+    pulseCenter?: { x: number, y: number },
+    maxDistanceFactor?: number,
+    pulsePropagationSpeed?: number,
+    maxAngleDisplacement?: number,
+    maxLengthFactor?: number,
+    affectAngle?: boolean
+  };
 
   let targetAngle = item.currentAngle;
   let lengthFactor = 1.0;
@@ -151,61 +163,50 @@ const calculateTargetAngle_CenterPulse = (
 
   if (timeSincePulseActivation < 0) return { angle: targetAngle }; // Pulso aún no ha comenzado
 
-  const centerX = dimensions.width / 2;
-  const centerY = dimensions.height / 2;
+  const centerX = dimensions.width * (pulseCenter as { x: number, y: number }).x;
+  const centerY = dimensions.height * (pulseCenter as { x: number, y: number }).y;
   const centerVec = new Victor(centerX, centerY);
   const itemVec = new Victor(item.baseX, item.baseY);
   const directionFromCenter = itemVec.clone().subtract(centerVec);
   const distanceToCenter = directionFromCenter.length();
-  const maxPossibleDistance = Math.sqrt(centerX * centerX + centerY * centerY) * maxDistanceEffect;
+  const maxPossibleDistance = Math.max(1, Math.sqrt(centerX * centerX + centerY * centerY)) * (maxDistanceFactor as number);
 
   if (distanceToCenter > maxPossibleDistance && maxPossibleDistance > 0) {
     // Fuera del rango de efecto del pulso principal
-    if (returnToTangential && timeSincePulseActivation > pulseDuration + postPulseOscillationDuration) { // Si el pulso ya pasó completamente
-        const angleToCenter = Math.atan2(item.baseY - centerY, item.baseX - centerX);
-        targetAngle = (angleToCenter + Math.PI / 2) * (180 / Math.PI); // Tangencial
+    if (affectAngle && timeSincePulseActivation > pulseDuration) { // Calcular efectos basados en la influencia
+      const angleOffset = Math.sin((timeSincePulseActivation - pulseDuration) / pulseDuration * Math.PI) * (maxAngleDisplacement as number);
+      const directionToCenter = Math.atan2(item.baseY - centerY, item.baseX - centerX);
+      targetAngle = directionToCenter + angleOffset;
     }
-    return { angle: targetAngle, completed: timeSincePulseActivation > pulseDuration + postPulseOscillationDuration };
+    return { angle: targetAngle, completed: timeSincePulseActivation > pulseDuration };
   }
 
   const normalizedDistance = maxPossibleDistance > 0 ? distanceToCenter / maxPossibleDistance : 0; // 0 (centro) a 1 (borde del efecto)
-  const delay = normalizedDistance * (pulseDuration * (1 - pulsePropagationSpeed)); // Pulso llega más tarde a los más lejanos
+  const arrivalTime = normalizedDistance * ((pulseDuration as number) / (pulsePropagationSpeed as number)); // Tiempo de llegada esperado de la onda al vector
 
-  if (timeSincePulseActivation >= delay) {
-    const timeIntoPulseEffect = timeSincePulseActivation - delay;
+  if (timeSincePulseActivation >= arrivalTime) {
+    const timeIntoPulseEffect = timeSincePulseActivation - arrivalTime;
 
     if (timeIntoPulseEffect < pulseDuration) {
       // Fase principal del pulso: apuntar hacia afuera
-      targetAngle = directionFromCenter.angleDeg() + 180 + outwardAngleOffset; // Hacia afuera + offset
-      // Efecto de "onda" en longitud/grosor
-      const pulseProgress = timeIntoPulseEffect / pulseDuration; // 0 a 1
-      const wave = Math.sin(pulseProgress * Math.PI); // Onda sinusoidal simple (0 -> 1 -> 0)
-      lengthFactor = 1 + wave * 0.5; // Se alarga hasta 1.5x
-      widthFactor = 1 + wave * 0.2;  // Se ensancha hasta 1.2x
-    } else if (timeIntoPulseEffect < pulseDuration + postPulseOscillationDuration) {
+      targetAngle = directionFromCenter.angleDeg() + 180; // Hacia afuera
+      // Afectar factores de longitud/anchura basados en la influencia
+      const easedProgress = Math.sin(timeIntoPulseEffect / pulseDuration * Math.PI);
+      lengthFactor = 1 + easedProgress * ((maxLengthFactor as number) - 1);
+      widthFactor = 1 + easedProgress * 0.2; // Se ensancha hasta 1.2x
+    } else if (timeIntoPulseEffect < pulseDuration * 2) {
       // Fase de oscilación post-pulso
-      const postPulseProgress = (timeIntoPulseEffect - pulseDuration) / postPulseOscillationDuration; // 0 a 1
-      const oscillation = Math.sin(postPulseProgress * Math.PI * 4) * postPulseOscillationAmplitude * (1 - postPulseProgress); // Oscilación que se desvanece
+      const postPulseProgress = (timeIntoPulseEffect - pulseDuration) / pulseDuration; // 0 a 1
+      const oscillation = Math.sin(postPulseProgress * Math.PI * 4) * 15; // Oscilación que se desvanece
 
-      if (returnToTangential) {
-        const angleToCenter = Math.atan2(item.baseY - centerY, item.baseX - centerX);
-        const tangentialAngle = (angleToCenter + Math.PI / 2) * (180 / Math.PI);
-        targetAngle = tangentialAngle + oscillation;
-      } else {
-        targetAngle = item.initialAngle + oscillation; // Vuelve al inicial con oscilación
+      if (affectAngle) {
+        targetAngle = item.initialAngle + oscillation;
       }
     } else {
-        // Pulso completado para este vector
-        pulseCompletedForThisVector = true;
-        if (returnToTangential) {
-            const angleToCenter = Math.atan2(item.baseY - centerY, item.baseX - centerX);
-            targetAngle = (angleToCenter + Math.PI / 2) * (180 / Math.PI);
-        } else {
-            targetAngle = item.initialAngle;
-        }
+      // Pulso completado para este vector
+      pulseCompletedForThisVector = true;
     }
   }
-
 
   return { angle: targetAngle, lengthFactor, widthFactor, completed: pulseCompletedForThisVector };
 };
@@ -270,39 +271,42 @@ const applyPulseToVector = (
   const maxPossibleDistance = Math.max(1, Math.sqrt(centerX * centerX + centerY * centerY)); // Evitar división por cero
   const normalizedDistance = distanceToCenter / maxPossibleDistance;
 
-  const delayOffset = normalizedDistance * delayPerDistanceUnit;
-  const timeSincePulseStart = (currentTime - pulseStartTime - delayOffset) * timeScale;
+  const delayOffset = normalizedDistance * (delayPerDistanceUnit as number);
+  const timeSincePulseStart = (currentTime - pulseStartTime - delayOffset) * (timeScale as number);
   
-  const pulseProgress = Math.min(1, Math.max(0, timeSincePulseStart / pulseDuration));
+  // Usar timeSincePulseStart en lugar de timeSincePulseActivation
+  const pulseProgress = timeSincePulseStart < 0 ?
+    0 :
+    Math.min(1, timeSincePulseStart / (pulseDuration as number));
   const pulseCompletedForThisVector = pulseProgress >= 1;
   const pulseActiveForThisVector = pulseProgress > 0 && pulseProgress < 1;
 
-  const easingFunction = easingFunctions[easingFnKey] || easingFunctions.linear;
+  const easingFunction = easingFunctions[easingFnKey as string] || easingFunctions.linear;
   const easedPulseProgress = easingFunction(pulseProgress);
-
+  
   // Si distanceImpactFactor es negativo, los más lejanos se activan antes/más fuerte.
   // Si es positivo, los más cercanos se activan antes/más fuerte.
   // Aquí, un factor de 0 significa que la distancia no afecta la *intensidad* del progreso, solo el posible *retraso*.
-  // Para afectar la intensidad, podemos modular easedPulseProgress:
-  // easedPulseProgress *= (1 - normalizedDistance * distanceImpactFactor); // Esto haría que los más lejanos tengan un pulso más débil si distanceImpactFactor es positivo.
 
   let angleOffset = 0;
-  const angleEasingFunction = easingFunctions[angleEasingFnKey] || easingFunctions.linear;
+  const angleEasingFunction = easingFunctions[angleEasingFnKey as string] || easingFunctions.linear;
   const angleEffectProgress = angleEasingFunction(easedPulseProgress); // Easing específico para el efecto de ángulo
 
-  if (angleOffsetMode === 'sine') {
-    angleOffset = Math.sin(angleEffectProgress * Math.PI) * maxAngleOffset; 
-  } else if (angleOffsetMode === 'triangle') {
-    angleOffset = (angleEffectProgress < 0.5 ? 2 * angleEffectProgress : 2 * (1 - angleEffectProgress)) * maxAngleOffset;
-  } else if (angleOffsetMode === 'random') {
-    angleOffset = (Math.random() - 0.5) * 2 * maxAngleOffset * Math.sin(angleEffectProgress * Math.PI);
+  if ((angleOffsetMode as string) === 'sine') {
+    angleOffset = Math.sin(angleEffectProgress * Math.PI) * (maxAngleOffset as number); 
+  } else if ((angleOffsetMode as string) === 'triangle') {
+    angleOffset = (angleEffectProgress < 0.5 ? 2 * angleEffectProgress : 2 * (1 - angleEffectProgress)) * (maxAngleOffset as number);
+  } else if ((angleOffsetMode as string) === 'random') {
+    angleOffset = (Math.random() - 0.5) * 2 * (maxAngleOffset as number) * Math.sin(angleEffectProgress * Math.PI);
   }
 
+  // Determinar el ángulo objetivo según el modo de pulso
   let newAngle = item.currentAngle;
   const angleToCenterRad = Math.atan2(dy, dx);
   const angleToCenterDeg = angleToCenterRad * (180 / Math.PI);
-
-  switch (targetAngleDuringPulse) {
+  
+  // Tipo capturado como string para evitar errores de tipo
+  switch (targetAngleDuringPulse as string) {
     case 'initialRelative':
       newAngle = item.initialAngle + angleOffset;
       break;
@@ -327,25 +331,24 @@ const applyPulseToVector = (
   }
 
   // Aplicar efectos a los factores (longitud, grosor, intensidad)
-  const factorEasingFunction = easingFunctions[factorEasingFnKey] || easingFunctions.linear;
+  const factorEasingFunction = easingFunctions[factorEasingFnKey as string] || easingFunctions.linear;
   const factorEffectProgress = factorEasingFunction(easedPulseProgress); // Easing específico para los factores
   
-  // Interpolar factores entre min y max usando la progresión del pulso
   // La forma de la onda de los factores es típicamente una subida y bajada (como un pulso real)
   // Esto se puede lograr con sin(progress * PI) o similar para que comience y termine en el valor base (asumido 1 para factores).
   const factorWave = Math.sin(factorEffectProgress * Math.PI); // Va de 0 a 1 y de nuevo a 0
 
   const newLengthFactor = 1 + (factorWave > 0 ? 
-                                (maxLengthFactorPulse - 1) * factorWave : 
-                                (1 - minLengthFactorPulse) * factorWave); // Si minLengthFactorPulse es < 1, factorWave negativo lo reduce
+                                 ((maxLengthFactorPulse as number) - 1) * factorWave : 
+                                 (1 - (minLengthFactorPulse as number)) * factorWave); // Si minLengthFactorPulse es < 1, factorWave negativo lo reduce
 
   const newWidthFactor = 1 + (factorWave > 0 ? 
-                               (maxWidthFactorPulse - 1) * factorWave : 
-                               (1 - minWidthFactorPulse) * factorWave);
+                                ((maxWidthFactorPulse as number) - 1) * factorWave : 
+                                (1 - (minWidthFactorPulse as number)) * factorWave);
 
   const newIntensityFactor = 1 + (factorWave > 0 ? 
-                                 (maxIntensityFactorPulse - 1) * factorWave : 
-                                 (1 - minIntensityFactorPulse) * factorWave);
+                                  ((maxIntensityFactorPulse as number) - 1) * factorWave : 
+                                  (1 - (minIntensityFactorPulse as number)) * factorWave);
 
   // Solo aplicar cambios si el pulso está activo para este vector
   if (pulseActiveForThisVector) {
@@ -551,13 +554,16 @@ export const useVectorAnimation = ({
               break;
             case 'staticAngle': {
               // Simplemente establece todos los vectores al mismo ángulo fijo
-              const { angle = 0 } = currentSettings.animationProps || {};
+              const { angle = 0 } = (currentSettings.animationProps as Record<string, number>) || {};
               targetAngle = angle;
               break;
             }
             case 'randomLoop': {
               // Cambiar ángulos aleatoriamente a intervalos definidos
-              const { intervalMs = 2000, transitionDurationFactor = 0.5 } = currentSettings.animationProps || {};
+              const { intervalMs = 2000, transitionDurationFactor = 0.5 } = (currentSettings.animationProps as {
+                intervalMs?: number,
+                transitionDurationFactor?: number
+              }) || {};
               
               // Inicializar estado si no existe
               if (!newItem.animationState || !newItem.animationState.nextRandomTime) {
@@ -569,25 +575,25 @@ export const useVectorAnimation = ({
               }
               
               // Verificar si es tiempo de cambiar a un nuevo ángulo aleatorio
-              if (currentTime >= newItem.animationState.nextRandomTime) {
-                newItem.animationState.previousAngle = newItem.animationState.targetAngle;
+              if (currentTime >= (newItem.animationState.nextRandomTime as number)) {
+                newItem.animationState.previousAngle = newItem.animationState.targetAngle as number;
                 newItem.animationState.targetAngle = Math.random() * 360;
                 newItem.animationState.nextRandomTime = currentTime + intervalMs;
               }
               
               // Interpolar hacia el ángulo objetivo basado en el tiempo
               const timeInTransition = Math.min(intervalMs * transitionDurationFactor, 
-                                              currentTime - (newItem.animationState.nextRandomTime - intervalMs));
+                                             currentTime - ((newItem.animationState.nextRandomTime as number) - intervalMs));
               const transitionProgress = timeInTransition / (intervalMs * transitionDurationFactor);
               
               if (transitionProgress < 1) {
                 targetAngle = interpolateAngle(
-                  newItem.animationState.previousAngle,
-                  newItem.animationState.targetAngle,
+                  newItem.animationState.previousAngle as number,
+                  newItem.animationState.targetAngle as number,
                   easingFunctions.easeInOutQuad(transitionProgress)
                 );
               } else {
-                targetAngle = newItem.animationState.targetAngle;
+                targetAngle = newItem.animationState.targetAngle as number;
               }
               break;
             }

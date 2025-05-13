@@ -4,14 +4,13 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { 
   ColorControlGradient, 
-  GradientType, 
+  // GradientType, // No utilizado actualmente
   GradientStop, 
   // PREDEFINED_PALETTES, // No utilizado actualmente
-  ColorPalette,
+  // ColorPalette, // Ya no se utiliza al comentar handlePresetClick
 } from '../core/color-types';
 import { VectorColorValue, GradientConfig } from '../core/types';
 
@@ -138,23 +137,23 @@ export function ColorControl({
   }, []);
   
   // Obtener un degradado inicial para la UI
-  const getInitialGradient = useCallback((): ColorControlGradient => {
-    if (isGradient) {
-      // Si ya es un gradiente, convertirlo al formato UI
-      const sysGradient = effectiveValue as GradientConfig;
-      return convertFromSystemGradient(sysGradient);
-    }
+  // const getInitialGradient = useCallback((): ColorControlGradient => {
+  //   if (isGradient) {
+  //     // Si ya es un gradiente, convertirlo al formato UI
+  //     const sysGradient = effectiveValue as GradientConfig;
+  //     return convertFromSystemGradient(sysGradient);
+  //   }
     
-    // Si no es un gradiente, crear uno predeterminado
-    return {
-      type: 'linear',
-      angle: 0,
-      stops: [
-        { color: '#4a80f5', position: 0 }, // Azul
-        { color: '#f54a80', position: 100 } // Rosa
-      ]
-    };
-  }, [isGradient, effectiveValue, convertFromSystemGradient]);
+  //   // Si no es un gradiente, crear uno predeterminado
+  //   return {
+  //     type: 'linear',
+  //     angle: 0,
+  //     stops: [
+  //       { color: '#4a80f5', position: 0 }, // Azul
+  //       { color: '#f54a80', position: 100 } // Rosa
+  //     ]
+  //   };
+  // }, [isGradient, effectiveValue, convertFromSystemGradient]);
   
   // Inicializar gradiente al cargar el componente
   useEffect(() => {
@@ -235,12 +234,12 @@ export function ColorControl({
   }, [effectiveValue, isGradient, solidColor, onChange, convertToSystemGradient, convertFromSystemGradient]);
   
   // Maneja cambios en el gradiente
-  const updateGradient = useCallback(() => {
-    // Solo aplicar si el tipo de color es 'gradient'
-    if (colorType === 'gradient') {
-      applyGradientWithStops(stops);
-    }
-  }, [colorType, stops, applyGradientWithStops]);
+  // const updateGradient = useCallback(() => {
+  //   // Solo aplicar si el tipo de color es 'gradient'
+  //   if (colorType === 'gradient') {
+  //     applyGradientWithStops(stops);
+  //   }
+  // }, [colorType, stops, applyGradientWithStops]);
   
   // Manejar cambio de color sólido
   const handleSolidColorChange = useCallback((color: string) => {
@@ -253,17 +252,17 @@ export function ColorControl({
   }, [colorType, onChange]);
   
   // Manejar cambio de tipo y color
-  const handleColorChange = useCallback((type: 'solid' | 'gradient', value: string | GradientStop[]) => {
-    setColorType(type);
+  // const handleColorChange = useCallback((type: 'solid' | 'gradient', value: string | GradientStop[]) => {
+  //   setColorType(type);
     
-    if (type === 'solid') {
-      setSolidColor(value as string);
-      onChange(value as string);
-    } else {
-      // Actualizar el gradiente
-      applyGradientWithStops(value as GradientStop[]);
-    }
-  }, [onChange, applyGradientWithStops]);
+  //   if (type === 'solid') {
+  //     setSolidColor(value as string);
+  //     onChange(value as string);
+  //   } else {
+  //     // Actualizar el gradiente
+  //     applyGradientWithStops(value as GradientStop[]);
+  //   }
+  // }, [onChange, applyGradientWithStops]);
   
   // Añadir un nuevo stop al gradiente
   const addStop = useCallback(() => {
@@ -390,16 +389,16 @@ export function ColorControl({
   }, [stops]);
   
   // Manejar clic en presets
-  const handlePresetClick = useCallback((palette: ColorPalette) => {
-    // Convertir la paleta a stops de gradiente
-    const gradientStops = palette.colors.map((color, index, array) => ({
-      color,
-      position: Math.round((index / (array.length - 1)) * 100)
-    }));
+  // const handlePresetClick = useCallback((palette: ColorPalette) => {
+  //   // Convertir la paleta a stops de gradiente
+  //   const gradientStops = palette.colors.map((color, index, array) => ({
+  //     color,
+  //     position: Math.round((index / (array.length - 1)) * 100)
+  //   }));
     
-    setStops(gradientStops);
-    applyGradientWithStops(gradientStops);
-  }, [applyGradientWithStops]);
+  //   setStops(gradientStops);
+  //   applyGradientWithStops(gradientStops);
+  // }, [applyGradientWithStops]);
   
   // Manejar selección de ángulo
   const handleAngleSelect = useCallback((newAngle: number) => {

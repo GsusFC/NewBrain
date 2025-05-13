@@ -1,4 +1,7 @@
 import React from 'react'; // Necesario para React.RefObject y React.ReactNode
+import type { AnimationType as ImportedAnimationType } from './animations/animationTypes'; // Importar AnimationType
+
+export type AnimationType = ImportedAnimationType; // Re-exportar AnimationType
 
 // --- Tipos Reutilizables ---
 
@@ -12,6 +15,18 @@ export type VectorShape = // `export` para que pueda ser usado en otros archivos
   | 'curve'
   | 'custom'
   | 'userSvg'; // Añadido para SVG de usuario
+
+// Propiedades específicas para las animaciones
+export interface AnimationProps {
+  waveFrequency?: number;
+  waveAmplitude?: number;
+  baseAngle?: number;
+  patternScale?: number;
+  speed?: number; // Ejemplo: para 'centerPulse'
+  duration?: number; // Ejemplo: para 'centerPulse'
+  // Agrega aquí otras propiedades comunes de animación que necesites
+  [key: string]: unknown; // Permite propiedades adicionales dinámicas
+}
 
 // Define la configuración para degradados de color
 export interface GradientConfig { // `export`
@@ -39,9 +54,9 @@ export interface AnimatedVectorItem { // `export`
   intensityFactor?: number; // Añadido para efectos de intensidad (ej. color, opacidad)
   previousAngle?: number;
   targetAngle?: number;
-  animationState?: Record<string, any>;
+  animationState?: Record<string, unknown>;
   flockId?: number;
-  customData?: any;
+  customData?: unknown;
 }
 
 // Define el tipo complejo para el color del vector
@@ -109,8 +124,8 @@ export interface VectorGridProps { // `export`
   vectorSettings?: Partial<VectorSettings>; // Agrupado
 
   // 4. Control de Animación (Animador)
-  animationType?: string;
-  animationProps?: Record<string, any>;
+  animationType?: AnimationType; // Usar AnimationType re-exportada
+  animationProps?: AnimationProps; // Usar el tipo AnimationProps definido
   isPaused?: boolean;
   easingFactor?: number;
   timeScale?: number;
@@ -160,8 +175,8 @@ export interface UseVectorGridReturn {
 }
 
 export interface AnimationSettings {
-  animationType?: string; // Opcional, se puede tener una animación por defecto o ninguna
-  animationProps?: Record<string, any>; // Opcional
+  animationType?: AnimationType; // Usar AnimationType re-exportada
+  animationProps?: AnimationProps; // Usar el tipo AnimationProps definido
   isPaused?: boolean; // Opcional, por defecto false
   easingFactor?: number; // Opcional, por defecto un valor estándar
   timeScale?: number; // Opcional, por defecto 1
