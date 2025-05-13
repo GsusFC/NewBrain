@@ -5,6 +5,9 @@ import type { VectorGridRef } from './VectorGrid';
 import { LeftControlPanel } from './controls/LeftControlPanel';
 import { RightControlPanel } from './controls/RightControlPanel';
 import type { VectorGridProps, VectorShape, AnimationType, AnimationProps, GridSettings, VectorSettings } from './core/types'; // Asegúrate de importar todos los tipos necesarios
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 // Valores iniciales/por defecto para las props de VectorGrid
 const INITIAL_GRID_PROPS: VectorGridProps = {
@@ -99,9 +102,50 @@ export default function VectorPlayground() {
       <main className="flex flex-col overflow-hidden"> {/* bg-slate-800 podría ser una opción aquí también */}
         {/* Menú Superior */}
         <header className="h-14 border-b border-slate-700 bg-slate-800/50 px-4 flex items-center justify-between shrink-0">
-          <h1 className="text-xl font-semibold">VectorGrid Playground</h1>
-          <div>
-            {/* Ejemplo: Botón de Pausa Global que interactúa con props */}
+          <div className="flex items-center space-x-6">
+            {/* Toggle Canvas/SVG */}
+            <div className="flex items-center space-x-2">
+              <Label htmlFor="renderAsCanvasToggle" className="text-sm font-medium">SVG</Label>
+              <Switch 
+                id="renderAsCanvasToggle" 
+                variant="rectangular" 
+                checked={gridProps.renderAsCanvas} 
+                onCheckedChange={c => handlePropsChange({renderAsCanvas: c})}
+              />
+              <Label htmlFor="renderAsCanvasToggle" className="text-sm font-medium">Canvas</Label>
+            </div>
+            
+            {/* Control de FPS (Throttle) */}
+            <div className="flex items-center space-x-2">
+              <Label htmlFor="throttleMsHeader" className="text-sm font-medium">FPS:</Label>
+              <Input 
+                id="throttleMsHeader" 
+                type="number" 
+                value={gridProps.throttleMs ? (1000 / gridProps.throttleMs).toFixed(0) : '60'} 
+                onChange={(e) => {
+                  const fps = parseInt(e.target.value, 10);
+                  if (!isNaN(fps) && fps > 0 && fps <= 120) {
+                    const throttleMs = Math.round(1000 / fps);
+                    handlePropsChange({throttleMs: throttleMs});
+                  }
+                }} 
+                className="w-16 h-8 text-xs text-right"
+                min="1"
+                max="120"
+                step="1"
+              />
+            </div>
+          </div>
+          
+          <div className="flex items-center">
+            {/* Info del Grid */}
+            <div className="text-xs text-slate-400 mr-4">
+              {gridProps.gridSettings?.rows && gridProps.gridSettings?.cols 
+                ? `${gridProps.gridSettings.rows}×${gridProps.gridSettings.cols} | ${gridProps.animationType}` 
+                : 'Cargando...'}
+            </div>
+            
+            {/* Botón de Pausa */}
             <button 
               onClick={() => handlePropsChange({ isPaused: !gridProps.isPaused })}
               className="p-2 rounded hover:bg-slate-700 transition-colors"

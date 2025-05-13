@@ -44,19 +44,31 @@ const SliderWithInput = React.forwardRef<
     return min
   }, [value, defaultValue, min])
 
+  // Función para formatear el valor de manera inteligente según su magnitud
+  const formatValueForDisplay = React.useCallback((value: number): string => {
+    if (formatDisplayValue) {
+      return formatDisplayValue(value);
+    }
+    
+    // Para valores muy pequeños (científicos)
+    if (Math.abs(value) < 0.001 && value !== 0) {
+      // Usar notación científica para números muy pequeños
+      return value.toExponential(2);
+    }
+    
+    // Para valores normales pero con precisión
+    return value.toFixed(precision);
+  }, [formatDisplayValue, precision]);
+
   // Estado local para el valor del input
   const [inputValue, setInputValue] = React.useState<string>(
-    formatDisplayValue 
-      ? formatDisplayValue(currentValue) 
-      : currentValue.toFixed(precision)
+    formatValueForDisplay(currentValue)
   )
 
   // Actualizar el input cuando cambia el slider
   React.useEffect(() => {
-    setInputValue(formatDisplayValue 
-      ? formatDisplayValue(currentValue) 
-      : currentValue.toFixed(precision))
-  }, [currentValue, formatDisplayValue, precision])
+    setInputValue(formatValueForDisplay(currentValue))
+  }, [currentValue, formatValueForDisplay])
 
   // Manejar cambio en el input
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,9 +86,7 @@ const SliderWithInput = React.forwardRef<
       const steppedValue = Math.round(clampedValue / step) * step
       
       // Formatear de nuevo para consistencia
-      setInputValue(formatDisplayValue 
-        ? formatDisplayValue(steppedValue) 
-        : steppedValue.toFixed(precision))
+      setInputValue(formatValueForDisplay(steppedValue))
       
       // Notificar el cambio
       if (onValueChange) {
@@ -87,9 +97,7 @@ const SliderWithInput = React.forwardRef<
       }
     } else {
       // Si no es un número válido, volver al valor actual
-      setInputValue(formatDisplayValue 
-        ? formatDisplayValue(currentValue) 
-        : currentValue.toFixed(precision))
+      setInputValue(formatValueForDisplay(currentValue))
     }
   }
 
@@ -116,12 +124,13 @@ const SliderWithInput = React.forwardRef<
         />
         <Input
           type="text"
-          className={cn("w-20 text-right", inputClassName)}
+          className={cn("w-24 text-right", inputClassName)}
           value={inputValue}
           onChange={handleInputChange}
           onBlur={handleInputBlur}
           onKeyDown={handleKeyDown}
           aria-label="Valor numérico"
+          title={inputValue} // Añadir tooltip para mejor visibilidad
         />
       </div>
     </div>

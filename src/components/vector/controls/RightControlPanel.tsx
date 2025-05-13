@@ -5,12 +5,10 @@ import React from 'react';
 import type { VectorGridProps, VectorShape, RotationOrigin, StrokeLinecap, GridSettings, VectorSettings } from '../core/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 // Accordions eliminados en favor de secciones directamente visibles
-// Button no se utiliza en este componente
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SliderWithInput } from '@/components/ui/slider-with-input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea'; // Para userSvgString
 
@@ -93,19 +91,8 @@ const handleVectorSliderChange = (
     }
 };
 
-// Helper para manejar cambios generales
-const handleNumericChange = (
-  propName: keyof VectorGridProps, 
-  value: string, 
-  onPropsChange: PropsChangeHandler
-) => {
-    const numValue = parseInt(value, 10);
-    if (!isNaN(numValue)) {
-      onPropsChange({ [propName]: numValue });
-    } else if (value === '') {
-      onPropsChange({ [propName]: undefined });
-    }
-};
+// Helpers para manejar propiedades específicas de la cuadrícula y vectores
+// (Las funciones handleNumericChange se eliminaron ya que no se necesitan más)
 
 export function RightControlPanel({ 
   currentProps, 
@@ -116,7 +103,6 @@ export function RightControlPanel({
   // Extraemos las propiedades de la nueva estructura jerárquica
   const {
     backgroundColor,
-    renderAsCanvas,
     gridSettings = {}, // Usar objeto vacío como fallback
     vectorSettings = {}, // Usar objeto vacío como fallback
   } = currentProps;
@@ -158,10 +144,30 @@ export function RightControlPanel({
                   <Input id="rightBgColorText" type="text" value={backgroundColor || '#000000'} onChange={(e) => onPropsChange({ backgroundColor: e.target.value })} placeholder="#000000" className="flex-1"/>
                 </div>
               </div>
-              <Label htmlFor="rowsInput">Filas</Label>
-              <Input id="rowsInput" type="number" value={rows ?? ''} onChange={(e) => handleGridNumericChange('rows', e.target.value, onGridSettingsChange, onPropsChange)} min="1" />
-              <Label htmlFor="colsInput">Columnas</Label>
-              <Input id="colsInput" type="number" value={cols ?? ''} onChange={(e) => handleGridNumericChange('cols', e.target.value, onGridSettingsChange, onPropsChange)} min="1" />
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="rowsInput" className="whitespace-nowrap text-xs">Filas</Label>
+                  <Input 
+                    id="rowsInput" 
+                    type="number" 
+                    value={rows ?? ''} 
+                    onChange={(e) => handleGridNumericChange('rows', e.target.value, onGridSettingsChange, onPropsChange)} 
+                    min="1" 
+                    className="w-14 text-center px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="colsInput" className="whitespace-nowrap text-xs">Columnas</Label>
+                  <Input 
+                    id="colsInput" 
+                    type="number" 
+                    value={cols ?? ''} 
+                    onChange={(e) => handleGridNumericChange('cols', e.target.value, onGridSettingsChange, onPropsChange)} 
+                    min="1" 
+                    className="w-14 text-center px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                  />
+                </div>
+              </div>
               <Label htmlFor="spacingSlider">Espaciado (px)</Label>
               <SliderWithInput id="spacingSlider" value={[spacing || 30]} max={150} min={5} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('spacing', val, onGridSettingsChange, onPropsChange)} />
               <Label htmlFor="marginSlider">Margen (px)</Label>
@@ -237,18 +243,7 @@ export function RightControlPanel({
               </Select>
         </div>
         
-        <Separator className="my-4" />
-        
-        {/* Sección: Ajustes de Renderizado */}
-        <div className="space-y-4 mb-6">
-          <h4 className="font-medium text-base">Ajustes de Renderizado</h4>
-              <div className="flex items-center space-x-2">
-                  <Checkbox id="renderAsCanvasRight" checked={renderAsCanvas} onCheckedChange={c => onPropsChange({renderAsCanvas: !!c})} />
-                  <Label htmlFor="renderAsCanvasRight">Usar Renderizador Canvas</Label>
-              </div>
-              <Label htmlFor="throttleMsInput">Throttle Actualización (ms)</Label>
-              <Input id="throttleMsInput" type="number" value={currentProps.throttleMs ?? ''} onChange={(e) => handleNumericChange('throttleMs', e.target.value, onPropsChange)} min="16" step="10"/>
-        </div>
+
       </div>
     </ScrollArea>
   );
