@@ -1,6 +1,6 @@
 'use client'; // Si usas Next.js App Router
 
-import React, { useRef, useEffect, useState, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 
 // Importar hooks y tipos del núcleo del sistema de vectores
 import { useVectorGrid } from './core/useVectorGrid'; 
@@ -9,7 +9,7 @@ import VectorSvgRenderer from './renderers/VectorSvgRenderer'; // Importar SVG R
 import { VectorCanvasRenderer } from './renderers/VectorCanvasRenderer'; // Importar Canvas Renderer
 
 // Importar hook de dimensiones actualizado
-import { useContainerDimensions, UseContainerDimensionsArgs } from '@/hooks/vector/useContainerDimensions';
+import { useContainerDimensions, type AspectRatioOption } from '@/hooks/vector/useContainerDimensions';
 
 import type {
   VectorGridProps,
@@ -92,7 +92,7 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
       debugMode = false,
 
       // Nuevas propiedades de aspecto
-      aspectRatio = 'container',
+      aspectRatio = 'auto',
       customAspectRatio,
       
       // Callbacks
@@ -115,34 +115,15 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
     }, [isPaused]);
 
     // Usar el hook mejorado de useContainerDimensions
-    const containerDimensions = useContainerDimensions({
-      containerRef: activeContainerRef,
-      aspectRatio,
+    const { dimensions: containerDimensions, observedDimensions } = useContainerDimensions({
+      containerRef: activeContainerRef.current,
+      aspectRatio: aspectRatio as AspectRatioOption,
       customAspectRatio,
       fixedWidth: !containerFluid ? width : undefined,
       fixedHeight: !containerFluid ? height : undefined
     });
 
-    // Mantener currentDimensions como estado para gestionar cambios y actualizaciones
-    const [currentDimensions, setCurrentDimensions] = useState<{ width: number; height: number }>(
-      !containerFluid && width && height 
-        ? { width, height } 
-        : DEFAULT_DIMENSIONS
-    );
 
-    // Actualizar currentDimensions cuando cambian las dimensiones del contenedor
-    useEffect(() => {
-      if (containerDimensions.width > 0 && containerDimensions.height > 0) {
-        setCurrentDimensions(containerDimensions);
-      }
-    }, [containerDimensions.width, containerDimensions.height]);
-
-    // Log inicial de props
-    useEffect(() => {
-      if (debugMode) {
-        // console.log(`[VectorGrid] Render con props - width: ${width}, height: ${height}, aspectRatio: ${aspectRatio}`);
-      }
-    }, [width, height, aspectRatio, debugMode]);
 
     // --- CONFIGURACIÓN DE PARÁMETROS Y HOOKS ---
     // Los useMemo ayudan a evitar cálculos innecesarios en cada render
@@ -197,24 +178,24 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
     const { initialVectors } = useVectorGrid({
       gridSettings: finalGridSettings,
       vectorSettings: finalVectorSettings,
-      dimensions: currentDimensions,
+      dimensions: containerDimensions,
     });
     
     // Asegurar que initialVectors existe y tiene elementos
     useEffect(() => {
       if (debugMode && (!initialVectors || initialVectors.length === 0)) {
         console.warn('[VectorGrid] initialVectors está vacío o no existe', { 
-          dimensions: currentDimensions,
+          dimensions: containerDimensions,
           gridSettings: finalGridSettings, 
           vectorSettings: finalVectorSettings
         });
       }
-    }, [initialVectors, currentDimensions, finalGridSettings, finalVectorSettings, debugMode]);
+    }, [initialVectors, containerDimensions, finalGridSettings, finalVectorSettings, debugMode]);
     
     // Hook useVectorAnimation: calcula las animaciones de los vectores
     const { animatedVectors } = useVectorAnimation({
       initialVectors: initialVectors, 
-      dimensions: currentDimensions, 
+      dimensions: containerDimensions, 
       animationSettings: finalAnimationSettings,
       mousePosition: mousePosition, 
       containerRef: activeContainerRef,
@@ -259,6 +240,17 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
 
     // --- RENDERIZADO ---
     // Componente base que cambia entre SVG y Canvas
+    // Log de dimensiones para debugging
+    useEffect(() => {
+      if (debugMode && aspectRatio === 'auto') {
+        console.log('[VectorGrid] Dimensiones actuales en modo Auto:', {
+          containerDimensions,
+          adjustment: containerDimensions.adjustment,
+          observedDimensions
+        });
+      }
+    }, [debugMode, aspectRatio, containerDimensions, observedDimensions]);
+    
     return (
       <div 
         ref={gridContainerRefInternal}
@@ -267,16 +259,37 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
           width: '100%', 
           height: '100%', 
           position: 'relative',
-          backgroundColor: backgroundColor || '#000'
+          backgroundColor: backgroundColor || '#000',
+          // Optimizamos el centrado para el modo Auto
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          // Estilo para debug
+          border: debugMode ? '2px solid red' : 'none'
         }}
         data-vectors-count={animatedVectors.length}
         data-render-mode={renderAsCanvas ? 'canvas' : 'svg'}
+        data-aspect-ratio-mode={aspectRatio}
       >
-        {renderAsCanvas ? (
+        {/* Contenedor interno para los renderizadores con dimensiones exactas */}
+        <div 
+          style={{
+            width: `${containerDimensions.width}px`,
+            height: `${containerDimensions.height}px`,
+            position: 'relative',
+            // Estilo para debug
+            border: debugMode ? '1px dashed yellow' : 'none',
+            boxSizing: 'border-box'
+          }}
+          data-aspect-ratio={aspectRatio}
+          data-width={containerDimensions.width}
+          data-height={containerDimensions.height}
+        >
+          {renderAsCanvas ? (
           <VectorCanvasRenderer 
             vectors={animatedVectors} 
-            width={currentDimensions.width} 
-            height={currentDimensions.height} 
+            width={containerDimensions.width} 
+            height={containerDimensions.height} 
             backgroundColor={backgroundColor}
             baseVectorLength={finalVectorSettings.vectorLength || DEFAULT_VECTOR_SETTINGS.vectorLength}
             baseVectorColor={finalVectorSettings.vectorColor || DEFAULT_VECTOR_SETTINGS.vectorColor}
@@ -286,11 +299,11 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
             baseRotationOrigin={finalVectorSettings.rotationOrigin || DEFAULT_VECTOR_SETTINGS.rotationOrigin}
             interactionEnabled={!internalIsPaused}
           />
-        ) : (
-          <VectorSvgRenderer 
+          ) : (
+            <VectorSvgRenderer 
             vectors={animatedVectors} 
-            width={currentDimensions.width} 
-            height={currentDimensions.height} 
+            width={containerDimensions.width} 
+            height={containerDimensions.height} 
             backgroundColor={backgroundColor}
             baseVectorLength={finalVectorSettings.vectorLength || DEFAULT_VECTOR_SETTINGS.vectorLength}
             baseVectorColor={finalVectorSettings.vectorColor || DEFAULT_VECTOR_SETTINGS.vectorColor}
@@ -300,7 +313,8 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
             baseRotationOrigin={finalVectorSettings.rotationOrigin || DEFAULT_VECTOR_SETTINGS.rotationOrigin}
             interactionEnabled={!internalIsPaused}
           />
-        )}
+          )}
+        </div>
       </div>
     );
   }

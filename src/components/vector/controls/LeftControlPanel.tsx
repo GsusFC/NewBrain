@@ -6,7 +6,6 @@ import type { VectorGridProps, AnimationType, AnimationProps } from '../core/typ
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SliderWithInput } from "@/components/ui/slider-with-input";
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
@@ -29,16 +28,24 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
 }) => {
   const { animationType, easingFactor, timeScale, dynamicLengthEnabled, dynamicWidthEnabled, dynamicIntensity } = currentProps;
 
+  // Usar useRef para almacenar currentProps.animationProps y evitar recreación de callbacks
+  const animationPropsRef = React.useRef(currentProps.animationProps || {});
+  // Actualizar la ref solo cuando cambian las props externas
+  React.useEffect(() => {
+    animationPropsRef.current = currentProps.animationProps || {};
+  }, [currentProps.animationProps]);
+
   const [localAnimationProps, setLocalAnimationProps] = useState(currentProps.animationProps || {});
 
+  // Memorizar estos callbacks con dependencias mínimas para evitar recreaciones
   const handleAnimationPropChange = useCallback((propName: keyof AnimationProps, value: number) => {
     const newAnimationProps = {
-      ...(currentProps.animationProps || {}), 
+      ...animationPropsRef.current,
       [propName]: value,
     };
     onAnimationSettingsChange({ animationProps: newAnimationProps });
-    setLocalAnimationProps(prev => ({...prev, ...newAnimationProps})); 
-  }, [currentProps.animationProps, onAnimationSettingsChange]);
+    setLocalAnimationProps(prev => ({...prev, [propName]: value}));
+  }, [onAnimationSettingsChange]);
 
   const handleAnimationTypeChange = useCallback((value: AnimationType) => {
     onAnimationSettingsChange({ animationType: value });
@@ -61,20 +68,26 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
         {/* Tipo de Animación */}
         <div className="space-y-4">
           <h4 className="font-medium text-base">Tipo de Animación</h4>
-          <Select
-            value={animationType}
-            onValueChange={(value) => handleAnimationTypeChange(value as AnimationType)}
-          >
-            <SelectTrigger id="animationTypeSelect"><SelectValue placeholder="Selecciona tipo" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Ninguna</SelectItem>
-              <SelectItem value="smoothWaves">Olas Suaves</SelectItem>
-              <SelectItem value="mouseInteraction">Interacción Ratón</SelectItem>
-              <SelectItem value="centerPulse">Pulso Central</SelectItem>
-              <SelectItem value="tangenteClasica">Tangente Clásica</SelectItem>
+          <div className="relative">
+            <select
+              id="animationTypeSelect"
+              value={animationType}
+              onChange={(e) => handleAnimationTypeChange(e.target.value as AnimationType)}
+              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
+            >
+              <option value="none">Ninguna</option>
+              <option value="smoothWaves">Olas Suaves</option>
+              <option value="mouseInteraction">Interacción Ratón</option>
+              <option value="centerPulse">Pulso Central</option>
+              <option value="tangenteClasica">Tangente Clásica</option>
               {/* ... más tipos ... */}
-            </SelectContent>
-          </Select>
+            </select>
+            <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </div>
+          </div>
         </div>
 
         {/* Parámetros de Animación - Solo se muestran cuando hay parámetros disponibles */}
@@ -133,20 +146,31 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
                   </Label>
                   <SliderWithInput 
                     id="pulseDur" 
-                    defaultValue={[currentProps.animationProps?.pulse?.pulseDuration || 1000]} 
+                    defaultValue={[1000]} 
+                    value={[typeof currentProps.animationProps?.pulse === 'object' && 
+                           currentProps.animationProps.pulse !== null && 
+                           'pulseDuration' in currentProps.animationProps.pulse ? 
+                           Number(currentProps.animationProps.pulse.pulseDuration) : 1000]} 
                     min={100} 
                     max={5000} 
                     step={50} 
                     precision={0}
-                    onValueChange={val => onPropsChange({
-                      animationProps: {
-                        ...currentProps.animationProps, 
-                        pulse: { 
-                          ...currentProps.animationProps?.pulse, 
-                          pulseDuration: val[0]
+                    onValueChange={val => {
+                      // Usar un enfoque más seguro para la actualización
+                      const currentAnimProps = currentProps.animationProps || {};
+                      const currentPulse = typeof currentAnimProps.pulse === 'object' ? 
+                                           {...currentAnimProps.pulse} : {};
+                      
+                      onPropsChange({
+                        animationProps: {
+                          ...currentAnimProps,
+                          pulse: {
+                            ...currentPulse,
+                            pulseDuration: val[0]
+                          }
                         }
-                      }
-                    })} 
+                      });
+                    }} 
                   />
                 </div>
                 {/* Otros parámetros de Pulso Central */}
@@ -177,25 +201,29 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
                 {/* Tipo de efecto */}
                 <div className="space-y-2">
                   <Label htmlFor="effectType">Tipo de efecto</Label>
-                  <Select 
-                    value={(currentProps.animationProps?.effectType as string | undefined) ?? 'attract'}
-                    onValueChange={(value) => onPropsChange({
-                      animationProps: {
-                        ...currentProps.animationProps,
-                        effectType: value
-                      }
-                    })}
-                  >
-                    <SelectTrigger id="effectType">
-                      <SelectValue placeholder="Selecciona efecto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="attract">Atracción</SelectItem>
-                      <SelectItem value="repel">Repulsión</SelectItem>
-                      <SelectItem value="align">Alineación</SelectItem>
-                      <SelectItem value="swirl">Remolino</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="relative">
+                    <select
+                      id="effectType"
+                      value={(currentProps.animationProps?.effectType as string | undefined) ?? 'attract'}
+                      onChange={(e) => onPropsChange({
+                        animationProps: {
+                          ...currentProps.animationProps,
+                          effectType: e.target.value
+                        }
+                      })}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
+                    >
+                      <option value="attract">Atracción</option>
+                      <option value="repel">Repulsión</option>
+                      <option value="align">Alineación</option>
+                      <option value="swirl">Remolino</option>
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                      </svg>
+                    </div>
+                  </div>
                 </div>
                 
                 {/* Intensidad del efecto */}

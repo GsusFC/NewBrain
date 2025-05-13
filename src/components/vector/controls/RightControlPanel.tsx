@@ -2,7 +2,12 @@
 'use client';
 
 import React from 'react';
-import type { VectorGridProps, VectorShape, RotationOrigin, StrokeLinecap, GridSettings, VectorSettings } from '../core/types';
+import type { VectorGridProps, GridSettings, VectorSettings } from '../core/types';
+
+// Tipos locales para elementos que no estén exportados desde core/types
+type VectorShape = 'arrow' | 'triangle' | 'circle' | 'semicircle' | 'curve' | 'rectangle' | 'plus' | 'userSvg';
+type RotationOrigin = 'start' | 'center' | 'end';
+type StrokeLinecap = 'butt' | 'round' | 'square';
 import { ScrollArea } from '@/components/ui/scroll-area';
 // Accordions eliminados en favor de secciones directamente visibles
 import { Label } from '@/components/ui/label';
@@ -31,10 +36,52 @@ const handleGridNumericChange = (
   propName: keyof GridSettings, 
   value: string, 
   onGridSettingsChange?: GridSettingsChangeHandler, 
-  onPropsChange?: PropsChangeHandler
+  onPropsChange?: PropsChangeHandler,
+  currentProps?: VectorGridProps // Nuevo parámetro para sincronizar filas/columnas en aspect ratio 1:1
 ) => {
     const numValue = parseInt(value, 10); // Usar parseInt para rows/cols
     if (!isNaN(numValue)) {
+      // Caso especial para aspect ratio 1:1: sincronizar filas y columnas
+      if (currentProps?.aspectRatio === '1:1') {
+        // Si estamos cambiando filas, actualizamos también columnas para mantener 1:1
+        if (propName === 'rows') {
+          if (onGridSettingsChange) {
+            onGridSettingsChange({ 
+              rows: numValue, 
+              cols: numValue // Mantener cuadrado perfecto
+            });
+          } else if (onPropsChange) {
+            onPropsChange({ 
+              gridSettings: { 
+                rows: numValue, 
+                cols: numValue // Mantener cuadrado perfecto
+              } 
+            });
+          }
+          // Ya hemos actualizado todo, salimos de la función
+          return;
+        }
+        // Si estamos cambiando columnas, actualizamos también filas para mantener 1:1
+        else if (propName === 'cols') {
+          if (onGridSettingsChange) {
+            onGridSettingsChange({ 
+              cols: numValue, 
+              rows: numValue // Mantener cuadrado perfecto
+            });
+          } else if (onPropsChange) {
+            onPropsChange({ 
+              gridSettings: { 
+                cols: numValue, 
+                rows: numValue // Mantener cuadrado perfecto
+              } 
+            });
+          }
+          // Ya hemos actualizado todo, salimos de la función
+          return;
+        }
+      }
+      
+      // Caso normal (no 1:1 o propiedad diferente a rows/cols)
       if (onGridSettingsChange) {
         onGridSettingsChange({ [propName]: numValue });
       } else if (onPropsChange) {
@@ -54,12 +101,56 @@ const handleGridSliderChange = (
   propName: keyof GridSettings, 
   value: number[], 
   onGridSettingsChange?: GridSettingsChangeHandler, 
-  onPropsChange?: PropsChangeHandler
+  onPropsChange?: PropsChangeHandler,
+  currentProps?: VectorGridProps // Nuevo parámetro para sincronizar filas/columnas en aspect ratio 1:1
 ) => {
+    const numValue = value[0];
+    
+    // Caso especial para aspect ratio 1:1: sincronizar filas y columnas
+    if (currentProps?.aspectRatio === '1:1') {
+      // Si estamos cambiando filas, actualizamos también columnas para mantener 1:1
+      if (propName === 'rows') {
+        if (onGridSettingsChange) {
+          onGridSettingsChange({ 
+            rows: numValue, 
+            cols: numValue // Mantener cuadrado perfecto
+          });
+        } else if (onPropsChange) {
+          onPropsChange({ 
+            gridSettings: { 
+              rows: numValue, 
+              cols: numValue // Mantener cuadrado perfecto
+            } 
+          });
+        }
+        // Ya hemos actualizado todo, salimos de la función
+        return;
+      }
+      // Si estamos cambiando columnas, actualizamos también filas para mantener 1:1
+      else if (propName === 'cols') {
+        if (onGridSettingsChange) {
+          onGridSettingsChange({ 
+            cols: numValue, 
+            rows: numValue // Mantener cuadrado perfecto
+          });
+        } else if (onPropsChange) {
+          onPropsChange({ 
+            gridSettings: { 
+              cols: numValue, 
+              rows: numValue // Mantener cuadrado perfecto
+            } 
+          });
+        }
+        // Ya hemos actualizado todo, salimos de la función
+        return;
+      }
+    }
+    
+    // Caso normal (no 1:1 o propiedad diferente a rows/cols)
     if (onGridSettingsChange) {
-      onGridSettingsChange({ [propName]: value[0] });
+      onGridSettingsChange({ [propName]: numValue });
     } else if (onPropsChange) {
-      onPropsChange({ gridSettings: { [propName]: value[0] } });
+      onPropsChange({ gridSettings: { [propName]: numValue } });
     }
 };
 
@@ -144,34 +235,64 @@ export function RightControlPanel({
                   <Input id="rightBgColorText" type="text" value={backgroundColor || '#000000'} onChange={(e) => onPropsChange({ backgroundColor: e.target.value })} placeholder="#000000" className="flex-1"/>
                 </div>
               </div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex items-center gap-1">
-                  <Label htmlFor="rowsInput" className="whitespace-nowrap text-xs">Filas</Label>
-                  <Input 
-                    id="rowsInput" 
-                    type="number" 
-                    value={rows ?? ''} 
-                    onChange={(e) => handleGridNumericChange('rows', e.target.value, onGridSettingsChange, onPropsChange)} 
-                    min="1" 
-                    className="w-14 text-center px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                  />
+              {/* Control de filas/columnas - Un solo control para 1:1, controles separados para otros ratios */}
+              {currentProps.aspectRatio === '1:1' ? (
+                <div className="mb-2">
+                  <Label htmlFor="gridSizeInput" className="flex items-center gap-1">
+                    <span>Tamaño de cuadrícula</span>
+                    <span className="text-xs text-slate-400">(filas = columnas)</span>
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      id="gridSizeInput" 
+                      type="number" 
+                      value={rows} 
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const numValue = parseInt(value, 10);
+                        if (!isNaN(numValue)) {
+                          onGridSettingsChange?.({ 
+                            rows: numValue, 
+                            cols: numValue // Mantener cuadrado perfecto
+                          });
+                        }
+                      }} 
+                      min={1} 
+                      max={100} 
+                      className="w-full" 
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Label htmlFor="colsInput" className="whitespace-nowrap text-xs">Columnas</Label>
-                  <Input 
-                    id="colsInput" 
-                    type="number" 
-                    value={cols ?? ''} 
-                    onChange={(e) => handleGridNumericChange('cols', e.target.value, onGridSettingsChange, onPropsChange)} 
-                    min="1" 
-                    className="w-14 text-center px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                  />
+              ) : (
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="rowsInput" className="whitespace-nowrap text-xs">Filas</Label>
+                    <Input 
+                      id="rowsInput" 
+                      type="number" 
+                      value={rows ?? ''} 
+                      onChange={(e) => handleGridNumericChange('rows', e.target.value, onGridSettingsChange, onPropsChange, currentProps)} 
+                      min="1" 
+                      className="w-14 text-center px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="colsInput" className="whitespace-nowrap text-xs">Columnas</Label>
+                    <Input 
+                      id="colsInput" 
+                      type="number" 
+                      value={cols ?? ''} 
+                      onChange={(e) => handleGridNumericChange('cols', e.target.value, onGridSettingsChange, onPropsChange, currentProps)} 
+                      min="1" 
+                      className="w-14 text-center px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               <Label htmlFor="spacingSlider">Espaciado (px)</Label>
-              <SliderWithInput id="spacingSlider" value={[spacing || 30]} max={150} min={5} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('spacing', val, onGridSettingsChange, onPropsChange)} />
+              <SliderWithInput id="spacingSlider" value={[spacing || 30]} max={150} min={5} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('spacing', val, onGridSettingsChange, onPropsChange, currentProps)} />
               <Label htmlFor="marginSlider">Margen (px)</Label>
-              <SliderWithInput id="marginSlider" value={[margin || 0]} max={300} min={0} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('margin', val, onGridSettingsChange, onPropsChange)} />
+              <SliderWithInput id="marginSlider" value={[margin || 0]} max={300} min={0} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('margin', val, onGridSettingsChange, onPropsChange, currentProps)} />
         </div>
         
         <Separator className="my-4" />

@@ -16,6 +16,14 @@ export type VectorShape = // `export` para que pueda ser usado en otros archivos
   | 'custom'
   | 'userSvg'; // Añadido para SVG de usuario
 
+// Define las opciones de relación de aspecto soportadas
+export type AspectRatioOption =
+  | 'auto'        // Se adapta al contenedor padre (anteriormente 'container')
+  | '1:1'         // Cuadrado
+  | '2:1'         // Doble ancho que alto
+  | '16:9'        // Formato panorámico
+  | 'custom';     // Relación de aspecto personalizada definida por el usuario
+
 // Propiedades específicas para las animaciones
 export interface AnimationProps {
   waveFrequency?: number;
@@ -87,7 +95,6 @@ export interface GridSettings { // Asegurarse que contenga todas las props de DE
   cols?: number;
   spacing?: number;
   margin?: number;
-  aspectRatio?: '1:1' | '2:1' | '16:9' | 'auto'; // Movido aquí si estaba en VectorGridProps
   vectorsPerFlock?: number; // Nueva propiedad para agrupar vectores
   userSvg?: string;
   userSvgPreserveAspectRatio?: string;
@@ -116,6 +123,22 @@ export interface VectorGridProps { // `export`
   containerStyle?: React.CSSProperties; // Considerar unificar con style
   backgroundColor?: string;
   containerRef?: React.RefObject<HTMLElement>;
+  /**
+   * Define la relación de aspecto a forzar para el área de renderizado.
+   * Si es 'container', se adapta a las dimensiones del contenedor HTML.
+   * Si es un valor predefinido (ej. '16:9'), se fuerza esa proporción.
+   * Si es 'custom', se utiliza la prop `customAspectRatio`.
+   * Ignorado si `width` y `height` fijas son proporcionadas.
+   * @default 'container'
+   */
+  aspectRatio?: AspectRatioOption;
+  
+  /**
+   * Define una relación de aspecto personalizada cuando `aspectRatio` es 'custom'.
+   * Ejemplo: { width: 4, height: 3 } para un ratio de 4:3.
+   * Ambos valores deben ser mayores que 0.
+   */
+  customAspectRatio?: { width: number; height: number };
 
   // 2. Configuración de la Cuadrícula (Generador)
   gridSettings?: Partial<GridSettings>; // Agrupado
@@ -201,4 +224,12 @@ export interface UseVectorAnimationProps {
 export interface UseVectorAnimationReturn {
   animatedVectors: AnimatedVectorItem[];
   setAnimatedVectors: React.Dispatch<React.SetStateAction<AnimatedVectorItem[]>>; // Para manipulación externa si es necesario
+}
+
+export interface UseContainerDimensionsArgs {
+  containerRef: React.RefObject<HTMLElement>;
+  aspectRatio?: AspectRatioOption;
+  customAspectRatio?: { width: number; height: number };
+  fixedWidth?: number;
+  fixedHeight?: number;
 }

@@ -9,6 +9,7 @@ import type {
   AspectRatioOption,
   VectorGridRef 
 } from './core/types';
+import { AspectRatioManager } from './core/AspectRatioManager';
 import { LeftControlPanel } from './controls/LeftControlPanel';
 import { RightControlPanel } from './controls/RightControlPanel';
 import { Switch } from '@/components/ui/switch';
@@ -16,7 +17,12 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 
 // Los valores iniciales se han configurado para un resultado visual interesante por defecto
-const INITIAL_GRID_PROPS: VectorGridProps = {
+// Extendemos VectorGridProps para incluir una key que nos ayude a forzar la reconstrucción del componente
+interface ExtendedVectorGridProps extends VectorGridProps {
+  key?: string;
+}
+
+const INITIAL_GRID_PROPS: ExtendedVectorGridProps = {
   gridSettings: {
     rows: 12,
     cols: 18,
@@ -24,10 +30,10 @@ const INITIAL_GRID_PROPS: VectorGridProps = {
     margin: 20
   },
   vectorSettings: {
-    shape: 'arrow' as const,
-    length: 24,
-    width: 4,
-    color: '#00aaff',
+    vectorShape: 'arrow' as const,
+    vectorLength: 24,
+    vectorWidth: 4,
+    vectorColor: '#00aaff',
     strokeLinecap: 'round' as const,
     rotationOrigin: 'center' as const
   },
@@ -46,22 +52,23 @@ const INITIAL_GRID_PROPS: VectorGridProps = {
   throttleMs: 16, // ~60fps
   isPaused: false,
   // Valores por defecto para el aspectRatio
-  aspectRatio: 'container',
+  aspectRatio: 'auto',
   customAspectRatio: { width: 16, height: 9 }
 };
 
 
 
 export default function VectorPlayground() {
-  const [gridProps, setGridProps] = useState<VectorGridProps>(INITIAL_GRID_PROPS);
+  const [gridProps, setGridProps] = useState<ExtendedVectorGridProps>(INITIAL_GRID_PROPS);
   const vectorGridRef = useRef<VectorGridRef>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
   
   // Referencia para el elemento que podría tener el foco cuando se presiona espacio
   // Evita activar la pausa si el usuario está escribiendo en un input
   const activeElementRef = useRef<Element | null>(null);
 
   // Callback general para actualizar props. Los paneles podrían filtrar qué envían.
-  const handlePropsChange = useCallback((newValues: Partial<VectorGridProps>) => {
+  const handlePropsChange = useCallback((newValues: Partial<ExtendedVectorGridProps>) => {
     setGridProps(prev => {
       // Manejo especial para fusionar animationProps si existen en ambos
       if (newValues.animationProps && prev.animationProps) {
@@ -72,6 +79,60 @@ export default function VectorPlayground() {
             ...prev.animationProps,
             ...newValues.animationProps
           }
+        }
+      }
+      
+      // Manejo especial para aspect ratio
+      if (newValues.aspectRatio && newValues.aspectRatio !== prev.aspectRatio) {
+        // Si cambia el aspect ratio y NO hay cambio explícito de gridSettings
+        // deberíamos ajustar automáticamente la configuración de la cuadrícula
+        if (!newValues.gridSettings) {
+          const spacing = prev.gridSettings?.spacing || 30;
+          let optimalRows, optimalCols;
+          
+          // Determinar dimensiones óptimas según el aspect ratio
+          switch (newValues.aspectRatio) {
+            case '1:1':
+              optimalRows = optimalCols = Math.max(8, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.6 / spacing));
+              break;
+            case '2:1':
+              optimalRows = Math.floor(window.innerHeight * 0.7 / spacing);
+              optimalCols = optimalRows * 2;
+              break;
+            case '16:9':
+              optimalRows = 9;
+              optimalCols = 16;
+              break;
+            case 'custom':
+              if (newValues.customAspectRatio) {
+                const ratio = newValues.customAspectRatio.width / newValues.customAspectRatio.height;
+                optimalRows = 12; // Base fija de filas
+                optimalCols = Math.round(optimalRows * ratio);
+              } else {
+                // Mantener configuración actual si no hay custom aspect ratio definido
+                optimalRows = prev.gridSettings?.rows || 12;
+                optimalCols = prev.gridSettings?.cols || 18;
+              }
+              break;
+            default: // 'auto'
+              // No ajustamos filas/columnas, mantener configuración actual
+              return {
+                ...prev,
+                ...newValues,
+                key: `auto-${Date.now()}`
+              };
+          }
+          
+          return {
+            ...prev,
+            ...newValues,
+            gridSettings: {
+              ...prev.gridSettings,
+              rows: optimalRows,
+              cols: optimalCols
+            },
+            key: `${newValues.aspectRatio}-${Date.now()}`
+          };
         }
       }
       
@@ -153,33 +214,34 @@ export default function VectorPlayground() {
   const calculatedFixedAspectRatio = dimensionsAreFixedByProps && gridProps.width && gridProps.height
     ? (gridProps.width / gridProps.height).toFixed(2)
     : null;
-    
-  // Estados para el panel expandible de aspect ratio personalizado
-  const [customPanelOpen, setCustomPanelOpen] = useState(false);
-  const [tempCustomAspect, setTempCustomAspect] = useState(() => ({ 
-    width: gridProps.customAspectRatio?.width || 16, 
-    height: gridProps.customAspectRatio?.height || 9 
-  }));
 
-  // Actualizar tempCustomAspect cuando cambia gridProps.customAspectRatio
-  useEffect(() => {
-    if (gridProps.customAspectRatio) {
-      setTempCustomAspect({
-        width: gridProps.customAspectRatio.width,
-        height: gridProps.customAspectRatio.height
-      });
-    }
-  }, [gridProps.customAspectRatio]);
+  // Ya no necesitamos estos estados, puesto que ahora son manejados por AspectRatioManager
+  // Observar dimensiones del contenedor para proporcionarlas a AspectRatioManager
+  const [observedDimensions, setObservedDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
 
-  // Auto-enfocar el primer input cuando se abre el panel
+  // Usar un efecto para observar las dimensiones del contenedor
   useEffect(() => {
-    if (customPanelOpen && gridProps.aspectRatio === 'custom') {
-      const inputEl = document.getElementById('custom-aspect-width');
-      if (inputEl) {
-        setTimeout(() => inputEl.focus(), 100);
+    if (!gridContainerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        setObservedDimensions({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        });
       }
-    }
-  }, [customPanelOpen, gridProps.aspectRatio]);
+    });
+
+    observer.observe(gridContainerRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   return (
     <div className="grid grid-cols-[300px_1fr_300px] lg:grid-cols-[360px_1fr_360px] w-full h-screen max-h-screen overflow-hidden bg-slate-900 text-slate-50">
@@ -251,203 +313,57 @@ export default function VectorPlayground() {
         {/* Área Principal */}
         <div className="flex-1 p-4 overflow-hidden">
           <div className="w-full h-full bg-black rounded-lg overflow-hidden">
-            <VectorGrid 
-              ref={vectorGridRef}
-              {...gridProps}
-            />
+            {/* Extracción estable de key para evitar recreaciones de funciones */}
+            {(() => {
+              // Extraer key de forma estable
+              const gridKey = gridProps.key;
+              // Crear una copia limpia de las props sin key
+              const propsWithoutKey = { ...gridProps };
+              delete propsWithoutKey.key;
+              
+              return (
+                <VectorGrid 
+                  ref={vectorGridRef}
+                  key={gridKey}
+                  {...propsWithoutKey}
+                />
+              );
+            })()}
           </div>
         </div>
         
         {/* Panel expandible de configuración de aspect ratio (aparece encima del menú inferior) */}
         <div className="relative">
-          {/* Panel de configuración personalizada que aparece encima */}
-          <div 
-            className={`absolute bottom-full left-1/2 transform -translate-x-1/2 bg-slate-700 border-t border-slate-600 transition-all duration-300 ease-in-out overflow-hidden rounded-t-md ${  
-              customPanelOpen && gridProps.aspectRatio === 'custom' && !dimensionsAreFixedByProps
-                ? 'max-h-12 opacity-100 translate-y-0 w-auto'
-                : 'max-h-0 opacity-0 translate-y-2 w-auto'
-            }`}
-          >
-            <div className="h-12 px-4 flex items-center justify-end gap-6">
-              <div className="flex items-center gap-2">
-                <label htmlFor="custom-aspect-width" className="text-xs text-slate-400">Ancho:</label>
-                <Input
-                  id="custom-aspect-width"
-                  type="number"
-                  value={tempCustomAspect.width}
-                  onChange={(e) => {
-                    const width = Math.max(1, parseInt(e.target.value, 10) || 1);
-                    setTempCustomAspect(prev => ({ ...prev, width }));
-                  }}
-                  onBlur={() => {
-                    if (gridProps.aspectRatio === 'custom') {
-                      handlePropsChange({
-                        customAspectRatio: tempCustomAspect
-                      });
-                    }
-                  }}
-                  className="w-16 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  min="1"
-                />
-              </div>
-              
-              <div className="text-xs text-slate-300">:</div>
-              
-              <div className="flex items-center gap-2">
-                <label htmlFor="custom-aspect-height" className="text-xs text-slate-400">Alto:</label>
-                <Input
-                  id="custom-aspect-height"
-                  type="number"
-                  value={tempCustomAspect.height}
-                  onChange={(e) => {
-                    const height = Math.max(1, parseInt(e.target.value, 10) || 1);
-                    setTempCustomAspect(prev => ({ ...prev, height }));
-                  }}
-                  onBlur={() => {
-                    if (gridProps.aspectRatio === 'custom') {
-                      handlePropsChange({
-                        customAspectRatio: tempCustomAspect
-                      });
-                    }
-                  }}
-                  className="w-16 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  min="1"
-                />
-              </div>
-              
-              <button
-                type="button"
-                onClick={() => {
-                  handlePropsChange({
-                    customAspectRatio: tempCustomAspect
-                  });
-                  setCustomPanelOpen(false);
-                }}
-                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 ml-2"
-              >
-                Aplicar
-              </button>
-            </div>
-          </div>
-
           {/* Menú Inferior con controles de aspectRatio */}
-          <div className="h-12 border-t border-slate-700 bg-slate-800/50 px-4 flex items-center justify-center">
-            {/* Control de Aspect Ratio con sistema de tabs */}
-            <div className="flex items-center">
-              
-              <div className="flex rounded-md bg-slate-700 p-0.5">
-                {/* Tab para container */}
-                <button 
-                  type="button"
-                  onClick={() => {
-                    handlePropsChange({ aspectRatio: 'container' });
-                    setCustomPanelOpen(false);
-                  }}
-                  className={`px-2.5 py-1 text-xs transition-all ${
-                    gridProps.aspectRatio === 'container' && !dimensionsAreFixedByProps 
-                      ? 'bg-slate-600 text-white rounded-sm shadow-sm' 
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                  disabled={dimensionsAreFixedByProps}
-                  aria-current={gridProps.aspectRatio === 'container' && !dimensionsAreFixedByProps ? 'true' : 'false'}
-                >
-                  Auto
-                </button>
-                
-                {/* Tab para 1:1 */}
-                <button 
-                  type="button"
-                  onClick={() => {
-                    handlePropsChange({ aspectRatio: '1:1' });
-                    setCustomPanelOpen(false);
-                  }}
-                  className={`px-2.5 py-1 text-xs transition-all ${
-                    gridProps.aspectRatio === '1:1' && !dimensionsAreFixedByProps 
-                      ? 'bg-slate-600 text-white rounded-sm shadow-sm' 
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                  disabled={dimensionsAreFixedByProps}
-                  aria-current={gridProps.aspectRatio === '1:1' && !dimensionsAreFixedByProps ? 'true' : 'false'}
-                >
-                  1:1
-                </button>
-                
-                {/* Tab para 16:9 */}
-                <button 
-                  type="button"
-                  onClick={() => {
-                    handlePropsChange({ aspectRatio: '16:9' });
-                    setCustomPanelOpen(false);
-                  }}
-                  className={`px-2.5 py-1 text-xs transition-all ${
-                    gridProps.aspectRatio === '16:9' && !dimensionsAreFixedByProps 
-                      ? 'bg-slate-600 text-white rounded-sm shadow-sm' 
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                  disabled={dimensionsAreFixedByProps}
-                  aria-current={gridProps.aspectRatio === '16:9' && !dimensionsAreFixedByProps ? 'true' : 'false'}
-                >
-                  16:9
-                </button>
-                
-                {/* Tab para 2:1 */}
-                <button 
-                  type="button"
-                  onClick={() => {
-                    handlePropsChange({ aspectRatio: '2:1' });
-                    setCustomPanelOpen(false);
-                  }}
-                  className={`px-2.5 py-1 text-xs transition-all ${
-                    gridProps.aspectRatio === '2:1' && !dimensionsAreFixedByProps 
-                      ? 'bg-slate-600 text-white rounded-sm shadow-sm' 
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                  disabled={dimensionsAreFixedByProps}
-                  aria-current={gridProps.aspectRatio === '2:1' && !dimensionsAreFixedByProps ? 'true' : 'false'}
-                >
-                  2:1
-                </button>
-                
-                {/* Tab para custom */}
-                <button 
-                  type="button"
-                  onClick={() => {
-                    // Si no está en custom, cambiar a custom
-                    if (gridProps.aspectRatio !== 'custom') {
-                      handlePropsChange({ 
-                        aspectRatio: 'custom',
-                        customAspectRatio: tempCustomAspect
-                      });
-                    }
-                    // Toggle el panel
-                    setCustomPanelOpen(prev => !prev);
-                  }}
-                  className={`px-2.5 py-1 text-xs transition-all ${
-                    gridProps.aspectRatio === 'custom' && !dimensionsAreFixedByProps 
-                      ? 'bg-slate-600 text-white rounded-sm shadow-sm' 
-                      : 'text-slate-300 hover:text-white'
-                  }`}
-                  disabled={dimensionsAreFixedByProps}
-                  aria-current={gridProps.aspectRatio === 'custom' && !dimensionsAreFixedByProps ? 'true' : 'false'}
-                >
-                  Custom
-                </button>
+          <div className="border-t border-slate-700 bg-slate-800/50 px-4 py-3 flex flex-col">
+            {/* Control de Aspect Ratio con el nuevo AspectRatioManager */}
+            <AspectRatioManager
+              initialAspectRatio={gridProps.aspectRatio as AspectRatioOption}
+              initialGridSettings={gridProps.gridSettings as GridSettings}
+              customAspectRatio={gridProps.customAspectRatio}
+              containerWidth={observedDimensions?.width || 800}
+              containerHeight={observedDimensions?.height || 600}
+              onConfigChange={(config) => {
+                handlePropsChange({
+                  aspectRatio: config.aspectRatio,
+                  gridSettings: config.gridSettings,
+                  customAspectRatio: config.customAspectRatio,
+                  // Agregar una key única para forzar recreación completa
+                  key: `${config.aspectRatio}-${Date.now()}`
+                });
+              }}
+              disabled={dimensionsAreFixedByProps}
+            />
+            
+            {/* Información de aspect ratio fijo si está configurado por props */}
+            {dimensionsAreFixedByProps && (
+              <div className="mt-2 p-2 bg-slate-700/50 rounded-sm">
+                <span className="text-xs text-amber-300">
+                  ⓘ Aviso: Las dimensiones están fijadas a través de props ({calculatedFixedAspectRatio}:1). 
+                  El ajuste de aspect ratio está desactivado.
+                </span>
               </div>
-              
-              {/* Recordatorio del formato personalizado cuando está seleccionado */}
-              {gridProps.aspectRatio === 'custom' && !dimensionsAreFixedByProps && (
-                <span className="text-xs text-slate-300 ml-2">
-                  {gridProps.customAspectRatio.width}:{gridProps.customAspectRatio.height}
-                </span>
-              )}
-              
-              {/* Información de aspect ratio fijo si está configurado por props */}
-              {dimensionsAreFixedByProps && (
-                <span className="text-xs text-slate-400 ml-1">
-                  Fijo ({calculatedFixedAspectRatio}:1)
-                </span>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
