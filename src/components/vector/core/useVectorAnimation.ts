@@ -142,7 +142,7 @@ const calculateTargetAngle_CenterPulse = (
     maxDistanceFactor = 1.5, // Factor para el cálculo de distancia máxima
     pulsePropagationSpeed = 1,
     maxAngleDisplacement = 90, // Desplazamiento máximo del ángulo en grados
-    maxLengthFactor = 1.3, // Factor máximo de estiramiento
+    maxLengthFactor = 10.0, // Factor máximo de estiramiento
     affectAngle = true // Si el pulso afecta al ángulo o no
   } = props as {
     pulseDuration?: number,
@@ -250,7 +250,7 @@ const applyPulseToVector = (
     maxAngleOffset = 90, // grados, cambio máximo de ángulo durante el pulso
     angleOffsetMode = 'sine', // 'sine', 'triangle', 'random'
     targetAngleDuringPulse = 'initialRelative', // 'initialRelative', 'awayFromCenter', 'towardsCenter', 'perpendicularClockwise', 'perpendicularCounterClockwise'
-    maxLengthFactorPulse = 1.5, // Factor de longitud máximo durante el pulso
+    maxLengthFactorPulse = 10.0, // Factor de longitud máximo durante el pulso
     minLengthFactorPulse = 0.8, // Factor de longitud mínimo durante el pulso
     maxWidthFactorPulse = 1.2,  // Factor de grosor máximo
     minWidthFactorPulse = 0.9,  // Factor de grosor mínimo

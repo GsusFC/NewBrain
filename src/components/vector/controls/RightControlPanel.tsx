@@ -171,7 +171,7 @@ export function RightControlPanel({
               <Label htmlFor="spacingSlider">Espaciado (px)</Label>
               <SliderWithInput id="spacingSlider" value={[spacing || 30]} max={150} min={5} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('spacing', val, onGridSettingsChange, onPropsChange)} />
               <Label htmlFor="marginSlider">Margen (px)</Label>
-              <SliderWithInput id="marginSlider" value={[margin || 0]} max={100} min={0} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('margin', val, onGridSettingsChange, onPropsChange)} />
+              <SliderWithInput id="marginSlider" value={[margin || 0]} max={300} min={0} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('margin', val, onGridSettingsChange, onPropsChange)} />
         </div>
         
         <Separator className="my-4" />
@@ -209,7 +209,7 @@ export function RightControlPanel({
               )}
 
               <Label htmlFor="vecLenSlider">Longitud (px)</Label>
-              <SliderWithInput id="vecLenSlider" value={[typeof vectorLength === 'number' ? vectorLength : 30]} max={200} min={1} step={1} precision={0} onValueChange={(val) => handleVectorSliderChange('vectorLength', val, onVectorSettingsChange, onPropsChange)} />
+              <SliderWithInput id="vecLenSlider" value={[typeof vectorLength === 'number' ? vectorLength : 30]} max={600} min={1} step={1} precision={0} onValueChange={(val) => handleVectorSliderChange('vectorLength', val, onVectorSettingsChange, onPropsChange)} />
               
               <Label htmlFor="vecColorInput">Color del Vector</Label>
               <div className="flex items-center gap-2 mt-1">

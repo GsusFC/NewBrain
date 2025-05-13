@@ -25,13 +25,13 @@ const DEFAULT_GRID_SETTINGS: GridSettings = {
   rows: 15,
   cols: 20,
   spacing: 30,
-  margin: 30
+  margin: 200
 };
 const DEFAULT_VECTOR_SETTINGS: VectorSettings = {
-  shape: 'arrow',
-  length: 24,
-  width: 8,
-  color: '#ffffff',
+  vectorShape: 'arrow',
+  vectorLength: 20,
+  vectorWidth: 8,
+  vectorColor: '#ffffff',
   strokeLinecap: 'round',
   rotationOrigin: 'center'
 };
@@ -104,6 +104,15 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
     const gridContainerRefInternal = useRef<HTMLDivElement>(null);
     const activeContainerRef = externalContainerRef || gridContainerRefInternal;
     const [mousePosition, /* setMousePosition */] = useState<{ x: number; y: number } | null>(null);
+    
+    // Estados para controlar la animación
+    const [pulseTrigger, setPulseTrigger] = useState<number | null>(null);
+    const [internalIsPaused, setInternalIsPaused] = useState<boolean>(isPaused || false);
+    
+    // Sincronizar el estado interno con las props
+    useEffect(() => {
+      setInternalIsPaused(isPaused || false);
+    }, [isPaused]);
 
     // Usar el hook mejorado de useContainerDimensions
     const containerDimensions = useContainerDimensions({
@@ -153,17 +162,17 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
 
     // Configuración final de los vectores
     const finalVectorSettings = useMemo<VectorSettings>(() => ({
-      shape: vectorSettings?.shape ?? DEFAULT_VECTOR_SETTINGS.shape,
-      length: vectorSettings?.length ?? DEFAULT_VECTOR_SETTINGS.length,
-      width: vectorSettings?.width ?? DEFAULT_VECTOR_SETTINGS.width,
-      color: vectorSettings?.color ?? DEFAULT_VECTOR_SETTINGS.color,
+      vectorShape: vectorSettings?.vectorShape ?? DEFAULT_VECTOR_SETTINGS.vectorShape,
+      vectorLength: vectorSettings?.vectorLength ?? DEFAULT_VECTOR_SETTINGS.vectorLength,
+      vectorWidth: vectorSettings?.vectorWidth ?? DEFAULT_VECTOR_SETTINGS.vectorWidth,
+      vectorColor: vectorSettings?.vectorColor ?? DEFAULT_VECTOR_SETTINGS.vectorColor,
       strokeLinecap: vectorSettings?.strokeLinecap ?? DEFAULT_VECTOR_SETTINGS.strokeLinecap,
       rotationOrigin: vectorSettings?.rotationOrigin ?? DEFAULT_VECTOR_SETTINGS.rotationOrigin
     }), [
-      vectorSettings?.shape, 
-      vectorSettings?.length, 
-      vectorSettings?.width,
-      vectorSettings?.color,
+      vectorSettings?.vectorShape, 
+      vectorSettings?.vectorLength, 
+      vectorSettings?.vectorWidth,
+      vectorSettings?.vectorColor,
       vectorSettings?.strokeLinecap,
       vectorSettings?.rotationOrigin
     ]);
@@ -180,7 +189,7 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
       dynamicIntensity: dynamicIntensity ?? DEFAULT_ANIMATION_SETTINGS.dynamicIntensity,
       throttleMs
     }), [
-      animationType, animationProps, isPaused, easingFactor, timeScale,
+      animationType, animationProps, internalIsPaused, easingFactor, timeScale,
       dynamicLengthEnabled, dynamicWidthEnabled, dynamicIntensity, throttleMs
     ]);
 
@@ -190,15 +199,17 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
       vectorSettings: finalVectorSettings,
       dimensions: currentDimensions,
     });
-
-    // Estados para controlar la animación
-    const [pulseTrigger, setPulseTrigger] = useState<number | null>(null);
-    const [internalIsPaused, setInternalIsPaused] = useState<boolean>(isPaused || false);
     
-    // Sincronizar el estado interno con las props
+    // Asegurar que initialVectors existe y tiene elementos
     useEffect(() => {
-      setInternalIsPaused(isPaused || false);
-    }, [isPaused]);
+      if (debugMode && (!initialVectors || initialVectors.length === 0)) {
+        console.warn('[VectorGrid] initialVectors está vacío o no existe', { 
+          dimensions: currentDimensions,
+          gridSettings: finalGridSettings, 
+          vectorSettings: finalVectorSettings
+        });
+      }
+    }, [initialVectors, currentDimensions, finalGridSettings, finalVectorSettings, debugMode]);
     
     // Hook useVectorAnimation: calcula las animaciones de los vectores
     const { animatedVectors } = useVectorAnimation({
@@ -211,6 +222,17 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
       onPulseComplete, 
       onAllPulsesComplete: onPulseComplete 
     });
+    
+    // Depuración para verificar los vectores animados
+    useEffect(() => {
+      if (debugMode) {
+        console.log('[VectorGrid] animatedVectors:', animatedVectors.length, 
+          animatedVectors.length > 0 ? {
+            ejemplo: animatedVectors[0],
+            color: finalVectorSettings.vectorColor
+          } : 'sin vectores');
+      }
+    }, [animatedVectors, finalVectorSettings, debugMode]);
 
     useImperativeHandle(ref, () => ({
       // Métodos expuestos al padre a través de ref
@@ -245,9 +267,10 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
           width: '100%', 
           height: '100%', 
           position: 'relative',
-          backgroundColor: backgroundColor || '#000', 
-          overflow: 'hidden'
+          backgroundColor: backgroundColor || '#000'
         }}
+        data-vectors-count={animatedVectors.length}
+        data-render-mode={renderAsCanvas ? 'canvas' : 'svg'}
       >
         {renderAsCanvas ? (
           <VectorCanvasRenderer 
@@ -255,7 +278,13 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
             width={currentDimensions.width} 
             height={currentDimensions.height} 
             backgroundColor={backgroundColor}
-            throttleMs={throttleMs}
+            baseVectorLength={finalVectorSettings.vectorLength || DEFAULT_VECTOR_SETTINGS.vectorLength}
+            baseVectorColor={finalVectorSettings.vectorColor || DEFAULT_VECTOR_SETTINGS.vectorColor}
+            baseVectorWidth={finalVectorSettings.vectorWidth || DEFAULT_VECTOR_SETTINGS.vectorWidth}
+            baseStrokeLinecap={finalVectorSettings.strokeLinecap || DEFAULT_VECTOR_SETTINGS.strokeLinecap}
+            baseVectorShape={finalVectorSettings.vectorShape || DEFAULT_VECTOR_SETTINGS.vectorShape}
+            baseRotationOrigin={finalVectorSettings.rotationOrigin || DEFAULT_VECTOR_SETTINGS.rotationOrigin}
+            interactionEnabled={!internalIsPaused}
           />
         ) : (
           <VectorSvgRenderer 
@@ -263,6 +292,13 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
             width={currentDimensions.width} 
             height={currentDimensions.height} 
             backgroundColor={backgroundColor}
+            baseVectorLength={finalVectorSettings.vectorLength || DEFAULT_VECTOR_SETTINGS.vectorLength}
+            baseVectorColor={finalVectorSettings.vectorColor || DEFAULT_VECTOR_SETTINGS.vectorColor}
+            baseVectorWidth={finalVectorSettings.vectorWidth || DEFAULT_VECTOR_SETTINGS.vectorWidth}
+            baseStrokeLinecap={finalVectorSettings.strokeLinecap || DEFAULT_VECTOR_SETTINGS.strokeLinecap}
+            baseVectorShape={finalVectorSettings.vectorShape || DEFAULT_VECTOR_SETTINGS.vectorShape}
+            baseRotationOrigin={finalVectorSettings.rotationOrigin || DEFAULT_VECTOR_SETTINGS.rotationOrigin}
+            interactionEnabled={!internalIsPaused}
           />
         )}
       </div>
