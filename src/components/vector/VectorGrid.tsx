@@ -1,16 +1,15 @@
-// Ruta: src/components/vector/VectorGrid.tsx
 'use client'; // Si usas Next.js App Router
 
 import React, { useRef, useEffect, useState, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
-
-// Importar debounce para optimizar el ResizeObserver
-import { debounce } from 'lodash'; // Asegurarse de que debounce esté importado
 
 // Importar hooks y tipos del núcleo del sistema de vectores
 import { useVectorGrid } from './core/useVectorGrid'; 
 import { useVectorAnimation } from './core/useVectorAnimation'; 
 import VectorSvgRenderer from './renderers/VectorSvgRenderer'; // Importar SVG Renderer
 import { VectorCanvasRenderer } from './renderers/VectorCanvasRenderer'; // Importar Canvas Renderer
+
+// Importar hook de dimensiones actualizado
+import { useContainerDimensions, UseContainerDimensionsArgs } from '@/hooks/vector/useContainerDimensions';
 
 import type {
   VectorGridProps,
@@ -20,54 +19,83 @@ import type {
   VectorSettings,
 } from './core/types';
 
-const DEFAULT_GRID_SETTINGS: GridSettings = { rows: 10, cols: 10, spacing: 30, margin: 0, aspectRatio: 'auto' }; 
-const DEFAULT_VECTOR_SETTINGS: VectorSettings = { 
-  vectorColor: 'white',
-  vectorLength: 20,
-  vectorWidth: 2,
-  vectorShape: 'line' as const,
-  strokeLinecap: 'round' as const,
-  rotationOrigin: 'center' as const,
+// Establecer valores por defecto para evitar dimensiones null/undefined
+const DEFAULT_DIMENSIONS = { width: 800, height: 600 }; // Tamaño por defecto si no hay contenedor o props
+const DEFAULT_GRID_SETTINGS: GridSettings = {
+  rows: 15,
+  cols: 20,
+  spacing: 30,
+  margin: 30
 };
-
+const DEFAULT_VECTOR_SETTINGS: VectorSettings = {
+  shape: 'arrow',
+  length: 24,
+  width: 8,
+  color: '#ffffff',
+  strokeLinecap: 'round',
+  rotationOrigin: 'center'
+};
 const DEFAULT_ANIMATION_SETTINGS: AnimationSettings = {
-  animationType: 'none',
-  animationProps: {},
-  isPaused: false,
-  easingFactor: 0.1,
-  timeScale: 1,
-  dynamicLengthEnabled: false,
+  animationType: 'smoothWaves',
+  animationProps: {
+    waveFrequency: 0.00025,
+    waveAmplitude: 5
+  },
+  easingFactor: 0.05,
+  timeScale: 1.0,
+  dynamicLengthEnabled: true,
   dynamicWidthEnabled: false,
-  dynamicIntensity: 1,
-  throttleMs: 16, // Aproximadamente 60fps
+  dynamicIntensity: 0.7,
+  isPaused: false
 };
 
-
+// Componente VectorGrid: Sistema de renderizado y animación de vectores
+/**
+ * VectorGrid - Componente para renderizar y animar una cuadrícula de vectores 2D.
+ * 
+ * @component
+ * @example
+ * ```tsx
+ * <VectorGrid 
+ *   gridSettings={{ rows: 20, cols: 30, spacing: 25, margin: 20 }}
+ *   backgroundColor="#000"
+ *   width={800} 
+ *   height={600} 
+ * />
+ * ```
+ */
 export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
   (
-    {
-      width = 600, 
-      height = 400, 
-      containerFluid = true, // <--- Añadir con default true
-      externalContainerRef,
-      className = '',
-      style = {},
-      debugMode = false,
-      backgroundColor, // Prop para el fondo del SVG/Canvas
-      gridSettings: userGridSettings = {},
-      vectorSettings: userVectorSettings = {},
+    { 
+      // Propiedades del Grid
+      gridSettings,
+      vectorSettings,
+      backgroundColor = '#000000',
+
+      // Propiedades de la animación
       animationType,
-      animationProps = {},
-      isPaused,
+      animationProps,
       easingFactor,
       timeScale,
       dynamicLengthEnabled,
       dynamicWidthEnabled,
       dynamicIntensity,
-      throttleMs,
-      renderAsCanvas = false, // Nueva prop con default false
-      onVectorClick,
-      onVectorHover,
+      isPaused,
+      throttleMs = 0, // 0 = sin throttle
+      
+      // Propiedades del contenedor
+      width,
+      height,
+      containerFluid = true, // Por defecto, adaptarse al contenedor
+      externalContainerRef,
+      renderAsCanvas = false,
+      debugMode = false,
+
+      // Nuevas propiedades de aspecto
+      aspectRatio = 'container',
+      customAspectRatio,
+      
+      // Callbacks
       onPulseComplete,
       onRenderFrame: _onRenderFrame, // Prefijado: no se usa internamente
     },
@@ -75,214 +103,167 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
   ) => {
     const gridContainerRefInternal = useRef<HTMLDivElement>(null);
     const activeContainerRef = externalContainerRef || gridContainerRefInternal;
-    const [mousePosition, /* setMousePosition */] = useState<{ x: number; y: number } | null>(null); // setMousePosition eliminado: no se usa
+    const [mousePosition, /* setMousePosition */] = useState<{ x: number; y: number } | null>(null);
 
-    // Log inicial de props movido a useEffect para evitar bucle de renderizado
-    useEffect(() => {
-      if (debugMode) {
-        // console.log(`[VectorGrid] Initial render with props - width: ${width}, height: ${height}, containerFluid: ${containerFluid}`);
-      }
-    }, [width, height, containerFluid, debugMode]); // Dependencias añadidas
-
-    // --- OBSERVER PARA DIMENSIONES DEL CONTENEDOR ---
-    // El estado 'currentDimensions' es el que usa useVectorGrid y el SVG Renderer
-    const [currentDimensions, setCurrentDimensions] = useState<{ width: number; height: number }>({ width, height });
-    
-    // Función base para actualizar dimensiones, envuelta en useCallback para estabilidad
-    const updateDimensionsCallback = useCallback((newWidth: number, newHeight: number) => {
-      if (debugMode) {
-        // console.log(`[VectorGrid] ResizeObserver: updateDimensionsCallback CALLED with ${newWidth}x${newHeight}`); // Eliminado: console.log fuera de debugMode
-      }
-      setCurrentDimensions({ width: newWidth, height: newHeight });
-    }, [debugMode]); // setCurrentDimensions es estable, debugMode es la única dependencia externa
-
-    // Crear la versión debounced de updateDimensionsCallback usando useMemo
-    // Esto asegura que debouncedSetDimensions sea estable a menos que updateDimensionsCallback cambie
-    const debouncedSetDimensions = useMemo(
-      () => debounce(updateDimensionsCallback, 100), // 100ms de debounce
-      [updateDimensionsCallback]
-    );
-
-    useEffect(() => {
-      const containerElement = externalContainerRef?.current || gridContainerRefInternal.current;
-
-      if (containerFluid && containerElement) {
-        // if (debugMode) { // Movido dentro del if (debugMode)
-        //   console.log(`[VectorGrid] ResizeObserver EFFECT: Attaching to element:`, containerElement);
-        // }
-        let lastWidth = 0;
-        let lastHeight = 0;
-
-        const resizeObserver = new ResizeObserver(entries => {
-          // Solo tomamos el primer entry, ya que solo observamos un elemento
-          const entry = entries[0]; // Cambiado de let a const
-          if (entry) {
-            const { width: newWidth, height: newHeight } = entry.contentRect;
-
-            // Evitar actualizaciones si las dimensiones no han cambiado significativamente
-            // o si las dimensiones son cero (puede ocurrir durante el desmontaje o antes del primer layout)
-            if ((Math.abs(newWidth - lastWidth) > 0.1 || Math.abs(newHeight - lastHeight) > 0.1) && newWidth > 0 && newHeight > 0) {
-              if (debugMode) {
-                // console.log(`[VectorGrid] ResizeObserver DETECTED CHANGE: New dimensions ${newWidth.toFixed(2)}x${newHeight.toFixed(2)}. Last: ${lastWidth.toFixed(2)}x${lastHeight.toFixed(2)}`);
-              }
-              lastWidth = newWidth;
-              lastHeight = newHeight;
-              debouncedSetDimensions(newWidth, newHeight);
-            } else if (debugMode && (newWidth === 0 || newHeight === 0)) {
-              // console.log(`[VectorGrid] ResizeObserver: Detected zero dimensions, ignoring. W: ${newWidth}, H: ${newHeight}`); // Eliminado: console.log fuera de debugMode
-            }
-          }
-        });
-
-        if (debugMode) { // console.log movido aquí para que esté dentro del if (debugMode)
-          // console.log(`[VectorGrid] ResizeObserver EFFECT: Attaching to element:`, containerElement);
-        }
-        resizeObserver.observe(containerElement);
-
-        // Comprobación inicial por si el elemento ya tiene dimensiones al montar
-        const initialRect = containerElement.getBoundingClientRect();
-        if (initialRect.width > 0 && initialRect.height > 0) {
-          if (debugMode) {
-            // console.log(`[VectorGrid] ResizeObserver: Initial check found dimensions ${initialRect.width}x${initialRect.height}. Calling debouncedSetDimensions.`); // Eliminado: console.log fuera de debugMode
-          }
-          // Actualiza las dimensiones si son diferentes de las iniciales basadas en props
-          // Esto es importante si containerFluid es true y el contenedor ya tiene un tamaño
-          if (Math.abs(initialRect.width - currentDimensions.width) > 0.1 || Math.abs(initialRect.height - currentDimensions.height) > 0.1) {
-            debouncedSetDimensions(initialRect.width, initialRect.height);
-          }
-        }
-
-        return () => {
-          if (debugMode) {
-            // console.log(`[VectorGrid] ResizeObserver CLEANUP: Disconnecting from element:`, containerElement);
-          }
-          resizeObserver.unobserve(containerElement);
-          debouncedSetDimensions.cancel(); 
-        };
-      } else if (!containerFluid) {
-        // if (debugMode) console.log(`[VectorGrid] containerFluid is false, using fixed dimensions: ${width}x${height}`); // Eliminado: console.log fuera de debugMode
-        setCurrentDimensions({ width, height });
-      }
-      // No añadir currentDimensions aquí, causaría un bucle si setCurrentDimensions se llama dentro.
-      // externalContainerRef puede cambiar si el padre lo cambia.
-      // gridContainerRefInternal.current no es una dependencia reactiva estable para useEffect.
-      // En su lugar, dependemos de que containerFluid o las props width/height cambien.
-    }, [containerFluid, width, height, debugMode, externalContainerRef, debouncedSetDimensions, currentDimensions.width, currentDimensions.height]); // Dependencias añadidas: currentDimensions.width, currentDimensions.height
-
-    // Combina las props de gridSettings por defecto con las proporcionadas por el usuario
-    const finalGridSettings = useMemo(() => ({
-      ...DEFAULT_GRID_SETTINGS, 
-      ...userGridSettings,
-    }), [userGridSettings]);
-
-    // Combina las props de vectorSettings por defecto con las proporcionadas por el usuario
-    const finalVectorSettings = useMemo(() => ({
-      ...DEFAULT_VECTOR_SETTINGS,
-      ...userVectorSettings,
-    }), [userVectorSettings]);
-
-    // Hook useVectorGrid: calcula las posiciones iniciales de los vectores
-    const { initialVectors /*, gridDimensions */ /*, calculatedCols, calculatedRows */ } = useVectorGrid({ // Eliminadas gridDimensions, calculatedCols y calculatedRows
-      dimensions: currentDimensions,
-      gridSettings: finalGridSettings,
-      vectorSettings: finalVectorSettings,
-      debugMode,
+    // Usar el hook mejorado de useContainerDimensions
+    const containerDimensions = useContainerDimensions({
+      containerRef: activeContainerRef,
+      aspectRatio,
+      customAspectRatio,
+      fixedWidth: !containerFluid ? width : undefined,
+      fixedHeight: !containerFluid ? height : undefined
     });
 
-    // Combina las props de animationSettings por defecto con las proporcionadas por el usuario
+    // Mantener currentDimensions como estado para gestionar cambios y actualizaciones
+    const [currentDimensions, setCurrentDimensions] = useState<{ width: number; height: number }>(
+      !containerFluid && width && height 
+        ? { width, height } 
+        : DEFAULT_DIMENSIONS
+    );
+
+    // Actualizar currentDimensions cuando cambian las dimensiones del contenedor
+    useEffect(() => {
+      if (containerDimensions.width > 0 && containerDimensions.height > 0) {
+        setCurrentDimensions(containerDimensions);
+      }
+    }, [containerDimensions.width, containerDimensions.height]);
+
+    // Log inicial de props
+    useEffect(() => {
+      if (debugMode) {
+        // console.log(`[VectorGrid] Render con props - width: ${width}, height: ${height}, aspectRatio: ${aspectRatio}`);
+      }
+    }, [width, height, aspectRatio, debugMode]);
+
+    // --- CONFIGURACIÓN DE PARÁMETROS Y HOOKS ---
+    // Los useMemo ayudan a evitar cálculos innecesarios en cada render
+
+    // Configuración final de la grid
+    const finalGridSettings = useMemo<GridSettings>(() => ({
+      rows: gridSettings?.rows ?? DEFAULT_GRID_SETTINGS.rows,
+      cols: gridSettings?.cols ?? DEFAULT_GRID_SETTINGS.cols,
+      spacing: gridSettings?.spacing ?? DEFAULT_GRID_SETTINGS.spacing,
+      margin: gridSettings?.margin ?? DEFAULT_GRID_SETTINGS.margin
+    }), [
+      gridSettings?.rows, 
+      gridSettings?.cols, 
+      gridSettings?.spacing, 
+      gridSettings?.margin
+    ]);
+
+    // Configuración final de los vectores
+    const finalVectorSettings = useMemo<VectorSettings>(() => ({
+      shape: vectorSettings?.shape ?? DEFAULT_VECTOR_SETTINGS.shape,
+      length: vectorSettings?.length ?? DEFAULT_VECTOR_SETTINGS.length,
+      width: vectorSettings?.width ?? DEFAULT_VECTOR_SETTINGS.width,
+      color: vectorSettings?.color ?? DEFAULT_VECTOR_SETTINGS.color,
+      strokeLinecap: vectorSettings?.strokeLinecap ?? DEFAULT_VECTOR_SETTINGS.strokeLinecap,
+      rotationOrigin: vectorSettings?.rotationOrigin ?? DEFAULT_VECTOR_SETTINGS.rotationOrigin
+    }), [
+      vectorSettings?.shape, 
+      vectorSettings?.length, 
+      vectorSettings?.width,
+      vectorSettings?.color,
+      vectorSettings?.strokeLinecap,
+      vectorSettings?.rotationOrigin
+    ]);
+
+    // Configuración final de la animación
     const finalAnimationSettings = useMemo(() => ({
       animationType: animationType ?? DEFAULT_ANIMATION_SETTINGS.animationType,
       animationProps: animationProps ?? DEFAULT_ANIMATION_SETTINGS.animationProps,
-      isPaused: isPaused ?? DEFAULT_ANIMATION_SETTINGS.isPaused,
+      isPaused: internalIsPaused, // Usar el estado interno que se sincroniza con las props
       easingFactor: easingFactor ?? DEFAULT_ANIMATION_SETTINGS.easingFactor,
       timeScale: timeScale ?? DEFAULT_ANIMATION_SETTINGS.timeScale,
       dynamicLengthEnabled: dynamicLengthEnabled ?? DEFAULT_ANIMATION_SETTINGS.dynamicLengthEnabled,
       dynamicWidthEnabled: dynamicWidthEnabled ?? DEFAULT_ANIMATION_SETTINGS.dynamicWidthEnabled,
       dynamicIntensity: dynamicIntensity ?? DEFAULT_ANIMATION_SETTINGS.dynamicIntensity,
-      throttleMs: throttleMs ?? DEFAULT_ANIMATION_SETTINGS.throttleMs,
+      throttleMs
     }), [
-      animationType, animationProps, isPaused, easingFactor, timeScale, 
+      animationType, animationProps, isPaused, easingFactor, timeScale,
       dynamicLengthEnabled, dynamicWidthEnabled, dynamicIntensity, throttleMs
     ]);
 
+    // Hook useVectorGrid: genera la cuadrícula inicial de vectores
+    const { initialVectors } = useVectorGrid({
+      gridSettings: finalGridSettings,
+      vectorSettings: finalVectorSettings,
+      dimensions: currentDimensions,
+    });
+
+    // Estados para controlar la animación
+    const [pulseTrigger, setPulseTrigger] = useState<number | null>(null);
+    const [internalIsPaused, setInternalIsPaused] = useState<boolean>(isPaused || false);
+    
+    // Sincronizar el estado interno con las props
+    useEffect(() => {
+      setInternalIsPaused(isPaused || false);
+    }, [isPaused]);
+    
     // Hook useVectorAnimation: calcula las animaciones de los vectores
     const { animatedVectors } = useVectorAnimation({
       initialVectors: initialVectors, 
       dimensions: currentDimensions, 
       animationSettings: finalAnimationSettings,
       mousePosition: mousePosition, 
-      containerRef: activeContainerRef, 
+      containerRef: activeContainerRef,
+      pulseTrigger: pulseTrigger,
       onPulseComplete, 
       onAllPulsesComplete: onPulseComplete 
     });
 
     useImperativeHandle(ref, () => ({
-      triggerPulse: (_vectorId?: string | string[]) => { // vectorId prefijado con _
+      // Métodos expuestos al padre a través de ref
+      triggerPulse: (vectorId?: string | string[]) => {
         if (debugMode) {
-          // console.log('[VectorGrid] Pulse triggered for:', vectorId || 'all vectors'); // Eliminado: console.log fuera de debugMode
+          console.log('[VectorGrid] triggerPulse called from ref', vectorId);
         }
-        // Aquí iría la lógica de pulso cuando la implementemos
+        // Activar el pulso estableciendo un nuevo timestamp
+        setPulseTrigger(performance.now());
       },
-      getVectors: () => animatedVectors, 
+      togglePause: () => {
+        if (debugMode) {
+          console.log('[VectorGrid] togglePause called from ref');
+        }
+        // Invertir el estado interno de pausa
+        setInternalIsPaused(!internalIsPaused);
+      },
+      getVectors: () => {
+        // Implementar método para obtener vectores según la interfaz VectorGridRef
+        return animatedVectors;
+      },
+      // Añadir más métodos según sea necesario
     }));
 
-    if (currentDimensions.width === 0 || currentDimensions.height === 0) {
-      return <div ref={gridContainerRefInternal} />;
-    }
-
+    // --- RENDERIZADO ---
+    // Componente base que cambia entre SVG y Canvas
     return (
-      <div
-        ref={gridContainerRefInternal} 
-        className="vector-grid-container"
+      <div 
+        ref={gridContainerRefInternal}
+        className="vector-grid-container" 
+        style={{ 
+          width: '100%', 
+          height: '100%', 
+          position: 'relative',
+          backgroundColor: backgroundColor || '#000', 
+          overflow: 'hidden'
+        }}
       >
-        {!renderAsCanvas && (
-          <VectorSvgRenderer 
-            vectors={animatedVectors} 
-            width={currentDimensions.width}
-            height={currentDimensions.height}
-            backgroundColor={backgroundColor}
-            baseVectorLength={finalVectorSettings.vectorLength ?? DEFAULT_VECTOR_SETTINGS.vectorLength}
-            baseVectorColor={finalVectorSettings.vectorColor}
-            baseVectorWidth={finalVectorSettings.vectorWidth}
-            baseVectorShape={finalVectorSettings.vectorShape}
-            baseStrokeLinecap={finalVectorSettings.strokeLinecap}
-            baseRotationOrigin={finalVectorSettings.rotationOrigin}
-            userSvgString={finalGridSettings.userSvg}
-            userSvgPreserveAspectRatio={finalGridSettings.userSvgPreserveAspectRatio}
-            onVectorClick={onVectorClick}
-            onVectorHover={onVectorHover}
-          />
-        )}
-        {renderAsCanvas && (
+        {renderAsCanvas ? (
           <VectorCanvasRenderer 
             vectors={animatedVectors} 
-            width={currentDimensions.width}
-            height={currentDimensions.height}
+            width={currentDimensions.width} 
+            height={currentDimensions.height} 
             backgroundColor={backgroundColor}
-            baseVectorLength={finalVectorSettings.vectorLength ?? DEFAULT_VECTOR_SETTINGS.vectorLength}
-            baseVectorColor={finalVectorSettings.vectorColor}
-            baseVectorWidth={finalVectorSettings.vectorWidth}
-            baseVectorShape={finalVectorSettings.vectorShape}
-            baseStrokeLinecap={finalVectorSettings.strokeLinecap}
-            baseRotationOrigin={finalVectorSettings.rotationOrigin}
-            userSvgString={finalGridSettings.userSvg}
-            userSvgPreserveAspectRatio={finalGridSettings.userSvgPreserveAspectRatio}
-            onVectorClick={onVectorClick}
-            onVectorHover={onVectorHover}
-            interactionEnabled={true}
-            /* Nota: cullingEnabled no existe en la interfaz VectorCanvasRendererProps */
-            debugMode={debugMode}
-            frameInfo={{ timestamp: Date.now(), frameCount: 0, totalFrames: 1000 }}
+            throttleMs={throttleMs}
           />
-        )}
-
-        {debugMode && (
-          <div style={{ position: 'absolute', top: 0, left: 0, color: 'yellow', fontSize: '10px', zIndex: 1000, whiteSpace: 'pre-wrap', pointerEvents: 'none' }}>
-            W: {currentDimensions.width.toFixed(0)} H: {currentDimensions.height.toFixed(0)} | Initial: {initialVectors.length} | Animated: {animatedVectors.length}
-            {animatedVectors[0] && ` | A[0].angle: ${animatedVectors[0].currentAngle.toFixed(2)}`}
-            Renderer: {renderAsCanvas ? 'Canvas' : 'SVG'}
-            Mouse: {mousePosition ? `X:${mousePosition.x.toFixed(0)} Y:${mousePosition.y.toFixed(0)}` : 'null'}
-          </div>
+        ) : (
+          <VectorSvgRenderer 
+            vectors={animatedVectors} 
+            width={currentDimensions.width} 
+            height={currentDimensions.height} 
+            backgroundColor={backgroundColor}
+          />
         )}
       </div>
     );
@@ -290,4 +271,3 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
 );
 
 VectorGrid.displayName = 'VectorGrid';
-export type { VectorGridProps, VectorGridRef };
