@@ -4,12 +4,12 @@
 import React from 'react';
 import type { VectorGridProps, VectorShape, RotationOrigin, StrokeLinecap, GridSettings, VectorSettings } from '../core/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Button } from '@/components/ui/button';
+// Accordions eliminados en favor de secciones directamente visibles
+// Button no se utiliza en este componente
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
+import { SliderWithInput } from '@/components/ui/slider-with-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea'; // Para userSvgString
@@ -68,7 +68,7 @@ const handleGridSliderChange = (
 // Helper para manejar cambios de propiedades de vectores
 const handleVectorChange = (
   propName: keyof VectorSettings, 
-  value: any, // Mantener 'any' por ahora para evitar problemas con genéricos
+  value: string | number | boolean, // Tipos más específicos para las propiedades de vectores
   onVectorSettingsChange?: VectorSettingsChangeHandler, 
   onPropsChange?: PropsChangeHandler
 ) => {
@@ -147,11 +147,10 @@ export function RightControlPanel({
       <div className="p-4 space-y-6">
         <h3 className="text-xl font-semibold tracking-tight text-center">Cuadrícula y Vectores</h3>
         <Separator />
-
-        <Accordion type="multiple" defaultValue={['grid-config', 'vector-style', 'render-settings']}>
-          <AccordionItem value="grid-config">
-            <AccordionTrigger>Configuración de Cuadrícula</AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-2">
+        
+        {/* Sección: Configuración de Cuadrícula */}
+        <div className="space-y-4 mb-6">
+          <h4 className="font-medium text-base">Configuración de Cuadrícula</h4>
               <div>
                 <Label htmlFor="rightBgColor">Color de Fondo Canvas</Label>
                 <div className="flex items-center gap-2 mt-1">
@@ -163,16 +162,17 @@ export function RightControlPanel({
               <Input id="rowsInput" type="number" value={rows ?? ''} onChange={(e) => handleGridNumericChange('rows', e.target.value, onGridSettingsChange, onPropsChange)} min="1" />
               <Label htmlFor="colsInput">Columnas</Label>
               <Input id="colsInput" type="number" value={cols ?? ''} onChange={(e) => handleGridNumericChange('cols', e.target.value, onGridSettingsChange, onPropsChange)} min="1" />
-              <Label htmlFor="spacingSlider">Espaciado ({spacing?.toFixed(0)}px)</Label>
-              <Slider id="spacingSlider" value={[spacing || 30]} max={150} min={5} step={1} onValueChange={(val) => handleGridSliderChange('spacing', val, onGridSettingsChange, onPropsChange)} />
-              <Label htmlFor="marginSlider">Margen ({margin?.toFixed(0)}px)</Label>
-              <Slider id="marginSlider" value={[margin || 0]} max={100} min={0} step={1} onValueChange={(val) => handleGridSliderChange('margin', val, onGridSettingsChange, onPropsChange)} />
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="vector-style">
-            <AccordionTrigger>Estilo de Vectores</AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-2">
+              <Label htmlFor="spacingSlider">Espaciado (px)</Label>
+              <SliderWithInput id="spacingSlider" value={[spacing || 30]} max={150} min={5} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('spacing', val, onGridSettingsChange, onPropsChange)} />
+              <Label htmlFor="marginSlider">Margen (px)</Label>
+              <SliderWithInput id="marginSlider" value={[margin || 0]} max={100} min={0} step={1} precision={0} onValueChange={(val) => handleGridSliderChange('margin', val, onGridSettingsChange, onPropsChange)} />
+        </div>
+        
+        <Separator className="my-4" />
+        
+        {/* Sección: Estilo de Vectores */}
+        <div className="space-y-4 mb-6">
+          <h4 className="font-medium text-base">Estilo de Vectores</h4>
               <Label htmlFor="vectorShapeSelect">Forma</Label>
               <Select value={vectorShape} onValueChange={(value) => handleVectorChange('vectorShape', value as VectorShape, onVectorSettingsChange, onPropsChange)}>
                 <SelectTrigger id="vectorShapeSelect"><SelectValue placeholder="Selecciona forma" /></SelectTrigger>
@@ -202,8 +202,8 @@ export function RightControlPanel({
                 </div>
               )}
 
-              <Label htmlFor="vecLenSlider">Longitud ({typeof vectorLength === 'number' ? vectorLength.toFixed(0) : '?'}px)</Label>
-              <Slider id="vecLenSlider" value={[typeof vectorLength === 'number' ? vectorLength : 30]} max={200} min={1} step={1} onValueChange={(val) => handleVectorSliderChange('vectorLength', val, onVectorSettingsChange, onPropsChange)} />
+              <Label htmlFor="vecLenSlider">Longitud (px)</Label>
+              <SliderWithInput id="vecLenSlider" value={[typeof vectorLength === 'number' ? vectorLength : 30]} max={200} min={1} step={1} precision={0} onValueChange={(val) => handleVectorSliderChange('vectorLength', val, onVectorSettingsChange, onPropsChange)} />
               
               <Label htmlFor="vecColorInput">Color del Vector</Label>
               <div className="flex items-center gap-2 mt-1">
@@ -213,8 +213,8 @@ export function RightControlPanel({
               {typeof vectorColor !== 'string' && <p className="text-xs text-muted-foreground mt-1">Color definido por función o gradiente.</p>}
 
 
-              <Label htmlFor="vecWidthSlider">Grosor ({typeof vectorWidth === 'number' ? vectorWidth.toFixed(1) : '?'}px)</Label>
-              <Slider id="vecWidthSlider" value={[typeof vectorWidth === 'number' ? vectorWidth : 2]} max={50} min={0.1} step={0.1} onValueChange={(val) => handleVectorSliderChange('vectorWidth', val, onVectorSettingsChange, onPropsChange)} />
+              <Label htmlFor="vecWidthSlider">Grosor (px)</Label>
+              <SliderWithInput id="vecWidthSlider" value={[typeof vectorWidth === 'number' ? vectorWidth : 2]} max={50} min={0.1} step={0.1} precision={1} onValueChange={(val) => handleVectorSliderChange('vectorWidth', val, onVectorSettingsChange, onPropsChange)} />
               
               <Label htmlFor="strokeLinecapSelect">Extremo de Línea</Label>
               <Select value={strokeLinecap} onValueChange={(value) => handleVectorChange('strokeLinecap', value as StrokeLinecap, onVectorSettingsChange, onPropsChange)}>
@@ -235,22 +235,20 @@ export function RightControlPanel({
                     <SelectItem value="end">Final</SelectItem>
                 </SelectContent>
               </Select>
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="render-settings">
-            <AccordionTrigger>Ajustes de Renderizado</AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-2">
+        </div>
+        
+        <Separator className="my-4" />
+        
+        {/* Sección: Ajustes de Renderizado */}
+        <div className="space-y-4 mb-6">
+          <h4 className="font-medium text-base">Ajustes de Renderizado</h4>
               <div className="flex items-center space-x-2">
                   <Checkbox id="renderAsCanvasRight" checked={renderAsCanvas} onCheckedChange={c => onPropsChange({renderAsCanvas: !!c})} />
                   <Label htmlFor="renderAsCanvasRight">Usar Renderizador Canvas</Label>
               </div>
               <Label htmlFor="throttleMsInput">Throttle Actualización (ms)</Label>
               <Input id="throttleMsInput" type="number" value={currentProps.throttleMs ?? ''} onChange={(e) => handleNumericChange('throttleMs', e.target.value, onPropsChange)} min="16" step="10"/>
-            </AccordionContent>
-          </AccordionItem>
-
-        </Accordion>
+        </div>
       </div>
     </ScrollArea>
   );

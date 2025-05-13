@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
+import { SliderWithInput } from "@/components/ui/slider-with-input";
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { debounce } from 'lodash';
@@ -90,23 +90,25 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
               <div className="space-y-3 border border-slate-700 rounded-md p-3">
                 <h5 className="text-sm font-medium text-slate-300">Olas Suaves</h5>
                 <div className="space-y-2">
-                  <Label htmlFor="waveFreqRange">Frecuencia ({waveFrequency.toFixed(5)})</Label>
-                  <Slider
+                  <Label htmlFor="waveFreqRange">Frecuencia</Label>
+                  <SliderWithInput
                     id="waveFreqRange"
                     min={0.00001}
                     max={0.0005}
                     step={0.00001}
+                    precision={5}
                     value={[waveFrequency]}
                     onValueChange={(val) => debouncedAnimationPropChange('waveFrequency', val[0])}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="waveAmpRange">Amplitud ({waveAmplitude.toFixed(0)})</Label>
-                  <Slider
+                  <Label htmlFor="waveAmpRange">Amplitud</Label>
+                  <SliderWithInput
                     id="waveAmpRange"
                     min={1}
                     max={180}
                     step={1}
+                    precision={0}
                     value={[waveAmplitude]} 
                     onValueChange={(val) => debouncedAnimationPropChange('waveAmplitude', val[0])}
                   />
@@ -127,14 +129,15 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
                 </Button>
                 <div className="space-y-2">
                   <Label htmlFor="pulseDur">
-                    Duración ({currentProps.animationProps?.pulse?.pulseDuration || 1000}ms)
+                    Duración (ms)
                   </Label>
-                  <Slider 
+                  <SliderWithInput 
                     id="pulseDur" 
                     defaultValue={[currentProps.animationProps?.pulse?.pulseDuration || 1000]} 
                     min={100} 
                     max={5000} 
                     step={50} 
+                    precision={0}
                     onValueChange={val => onPropsChange({
                       animationProps: {
                         ...currentProps.animationProps, 
@@ -158,14 +161,15 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
                 {/* Radio de interacción */}
                 <div className="space-y-2">
                   <Label htmlFor="interactionRadius">
-                    Radio de interacción ({currentProps.animationProps?.interactionRadius || 150}px)
+                    Radio de interacción (px)
                   </Label>
-                  <Slider 
+                  <SliderWithInput 
                     id="interactionRadius" 
-                    value={[currentProps.animationProps?.interactionRadius || 150]} 
+                    value={[(currentProps.animationProps?.interactionRadius as number | undefined) ?? 150]} 
                     min={50} 
                     max={300} 
                     step={5} 
+                    precision={0}
                     onValueChange={(val) => debouncedAnimationPropChange('interactionRadius', val[0])} 
                   />
                 </div>
@@ -174,7 +178,7 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
                 <div className="space-y-2">
                   <Label htmlFor="effectType">Tipo de efecto</Label>
                   <Select 
-                    value={currentProps.animationProps?.effectType || 'attract'}
+                    value={(currentProps.animationProps?.effectType as string | undefined) ?? 'attract'}
                     onValueChange={(value) => onPropsChange({
                       animationProps: {
                         ...currentProps.animationProps,
@@ -197,14 +201,15 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
                 {/* Intensidad del efecto */}
                 <div className="space-y-2">
                   <Label htmlFor="effectStrength">
-                    Intensidad ({currentProps.animationProps?.effectStrength || 1})
+                    Intensidad
                   </Label>
-                  <Slider 
+                  <SliderWithInput 
                     id="effectStrength" 
-                    value={[currentProps.animationProps?.effectStrength || 1]} 
+                    value={[(currentProps.animationProps?.effectStrength as number | undefined) ?? 1]} 
                     min={0.1} 
                     max={3} 
                     step={0.1} 
+                    precision={1}
                     onValueChange={(val) => debouncedAnimationPropChange('effectStrength', val[0])} 
                   />
                 </div>
@@ -212,14 +217,15 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
                 {/* Factor de disminución */}
                 <div className="space-y-2">
                   <Label htmlFor="falloffFactor">
-                    Disminución gradual ({currentProps.animationProps?.falloffFactor || 1})
+                    Disminución gradual
                   </Label>
-                  <Slider 
+                  <SliderWithInput 
                     id="falloffFactor" 
-                    value={[currentProps.animationProps?.falloffFactor || 1]} 
+                    value={[(currentProps.animationProps?.falloffFactor as number | undefined) ?? 1]} 
                     min={0.5} 
                     max={3} 
                     step={0.1} 
+                    precision={1}
                     onValueChange={(val) => debouncedAnimationPropChange('falloffFactor', val[0])} 
                   />
                 </div>
@@ -235,25 +241,27 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
           <h4 className="font-medium text-base">Efectos Dinámicos</h4>
           
           <div className="space-y-2">
-            <Label htmlFor="easingFactorRange">Suavizado ({easingFactor?.toFixed(2)})</Label>
-            <Slider 
+            <Label htmlFor="easingFactorRange">Suavizado</Label>
+            <SliderWithInput 
               id="easingFactorRange" 
               defaultValue={[easingFactor || 0.1]} 
               min={0.01} 
               max={1} 
               step={0.01} 
+              precision={2}
               onValueChange={val => onAnimationSettingsChange({ easingFactor: val[0] })} 
             />
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="timeScaleRange">Escala de Tiempo ({timeScale?.toFixed(1)})</Label>
-            <Slider 
+            <Label htmlFor="timeScaleRange">Escala de Tiempo</Label>
+            <SliderWithInput 
               id="timeScaleRange" 
               defaultValue={[timeScale || 1.0]} 
               min={0.1} 
               max={5} 
               step={0.1} 
+              precision={1}
               onValueChange={val => onAnimationSettingsChange({ timeScale: val[0] })} 
             />
           </div>
@@ -278,11 +286,12 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
           
           {(dynamicLengthEnabled || dynamicWidthEnabled) && (
             <div className="space-y-2 mt-2">
-              <Label htmlFor="dynInt">Intensidad Dinámica ({dynamicIntensity?.toFixed(1)})</Label>
-              <Slider 
+              <Label htmlFor="dynInt">Intensidad Dinámica</Label>
+              <SliderWithInput 
                 id="dynInt" 
                 defaultValue={[dynamicIntensity || 1.0]} 
                 min={0} 
+                precision={1}
                 max={5} 
                 step={0.1} 
                 onValueChange={val => onAnimationSettingsChange({ dynamicIntensity: val[0] })} 
