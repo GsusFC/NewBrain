@@ -31,7 +31,7 @@ export function ColorControl({
 }: ColorControlProps) {
   // Verificar si el valor es una función (no soportada por este control)
   const isFunction = typeof value === 'function';
-  const effectiveValue = isFunction ? '#4a80f5' : value;
+  const effectiveValue = isFunction ? 'var(--primary)' : value;
   
   // Determinar si el valor es un color simple o un gradiente
   const isGradient = typeof effectiveValue !== 'string';
@@ -43,19 +43,22 @@ export function ColorControl({
   
   // Estado para el color sólido
   const [solidColor, setSolidColor] = useState(
-    typeof effectiveValue === 'string' ? effectiveValue : '#4a80f5'
+    typeof effectiveValue === 'string' ? effectiveValue : 'var(--primary)'
   );
   
   // Estado para el gradiente
   const [angle, setAngle] = useState(0);
   const [stops, setStops] = useState<GradientStop[]>([
-    { color: '#4a80f5', position: 0 },
+    { color: 'var(--primary)', position: 0 },
     { color: '#f54a80', position: 100 }
   ]);
   
   // Colores predefinidos para facilitar la selección
   const presetColors = [
-    '#4a80f5', // Azul (color por defecto)
+  'var(--primary)', // color gris neutro
+  'var(--primary)', // gris neutro
+
+    'var(--primary)', // color gris neutro
     '#f54a80', // Rosa
     '#4af580', // Verde menta
     '#f5804a', // Naranja
@@ -149,7 +152,7 @@ export function ColorControl({
   //     type: 'linear',
   //     angle: 0,
   //     stops: [
-  //       { color: '#4a80f5', position: 0 }, // Azul
+  //       { color: 'var(--primary)', position: 0 }, // Azul
   //       { color: '#f54a80', position: 100 } // Rosa
   //     ]
   //   };
@@ -478,7 +481,7 @@ export function ColorControl({
               onChange={(e) => handleSolidColorChange(e.target.value)}
               className="w-full font-mono text-xs"
               disabled={disabled}
-              placeholder="Ingresa un color (ej. #4a80f5)"
+              placeholder="Ingresa un color (ej. #737373)"
             />
           </div>
         </div>

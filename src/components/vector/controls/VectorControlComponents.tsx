@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { debounce } from 'lodash';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,22 +21,26 @@ interface SliderControlProps {
   label: string;
   value: number;
   onChange: (value: number) => void;
-  onChangeEnd?: () => void; // Nuevo prop para capturar el final del arrastre
+  onChangeEnd?: () => void; // Prop para capturar el final del arrastre
   min: number;
   max: number;
   step: number;
   className?: string;
+  minLabel?: string; // Etiqueta opcional para el valor mínimo
+  maxLabel?: string; // Etiqueta opcional para el valor máximo
 }
 
 export function SliderControl({
   label,
   value,
   onChange,
-  onChangeEnd, // Nuevo prop
+  onChangeEnd,
   min,
   max,
   step,
   className = "",
+  minLabel,
+  maxLabel,
 }: SliderControlProps) {
   // Proteger contra posibles valores inválidos
   const safeValue = useMemo(() => {
@@ -112,13 +117,14 @@ export function SliderControl({
   return (
     <div className={`space-y-2 ${className}`}>
       <div className="flex items-center justify-between">
-        <Label htmlFor={`slider-${label}`} className="text-sm font-medium">
+        <Label htmlFor={`slider-${label}`} className="text-sm font-medium text-foreground">
           {label}
         </Label>
-        <div className="text-xs text-muted-foreground">
-          {formatValue(min)} - {formatValue(max)}
+        <div className="px-2 py-1 text-xs font-semibold rounded-md bg-primary/10 text-primary">
+          {formatValue(safeValue)}
         </div>
       </div>
+      
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <Slider
@@ -128,18 +134,39 @@ export function SliderControl({
             max={max}
             step={step}
             onValueChange={handleSliderChange}
-            // Al soltar el ratón:
             onPointerUp={handleSliderChangeComplete}
-            className="[&_[role=slider]]:h-5 [&_[role=slider]]:w-5 [&_[role=slider]]:border-2 [&_[role=slider]]:border-[#4a80f5]/50 [&_[role=slider]]:shadow-md [&_[role=slider]]:transition-all [&_[role=slider]]:duration-200 [&_[role=slider]]:hover:scale-110 [&_[role=slider]]:focus:scale-110 [&_[role=slider]]:data-[dragging=true]:scale-110 [&_.SliderTrack]:h-2 [&_.SliderRange]:h-2 [&_.SliderRange]:bg-[#4a80f5] hover:[&_.SliderRange]:bg-[#4a80f5] data-[focus]:outline-none"
+            className="
+              [&_[role=slider]]:h-5 
+              [&_[role=slider]]:w-5 
+              [&_[role=slider]]:border-2 
+              [&_[role=slider]]:border-primary 
+              [&_[role=slider]]:bg-background 
+              [&_[role=slider]]:shadow-md 
+              [&_[role=slider]]:transition-all 
+              [&_[role=slider]]:duration-150
+              [&_[role=slider]]:hover:bg-primary/20
+              [&_[role=slider]]:focus:bg-primary/20
+              [&_[role=slider]]:data-[dragging=true]:bg-primary/30
+              [&_.SliderTrack]:h-2 
+              [&_.SliderTrack]:bg-muted
+              [&_.SliderRange]:h-2 
+              [&_.SliderRange]:bg-primary/70
+            "
           />
+          
+          <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
+            <span>{minLabel || formatValue(min)}</span>
+            <span>{maxLabel || formatValue(max)}</span>
+          </div>
         </div>
+        
         <Input
           type="text"
           inputMode="numeric"
           value={inputValue}
           onChange={handleInputChange}
           onBlur={handleInputBlur}
-          className="w-20 h-8 text-xs text-right"
+          className="w-20 h-8 text-xs text-right bg-background border-input text-foreground"
         />
       </div>
     </div>
@@ -198,7 +225,7 @@ export function SwitchControl({
   className = "",
 }: SwitchControlProps) {
   return (
-    <div className={`flex flex-col gap-2 p-3 rounded-lg border border-slate-200 hover:border-[#4a80f5]/70 transition-all ${checked ? 'bg-[#4a80f5]/10' : 'bg-slate-50'} ${className}`}>
+    <div className={`flex flex-col gap-2 p-3 rounded-lg border border-border hover:border-primary/70 transition-all ${checked ? 'bg-primary/10' : 'bg-card'} ${className}`}>
       <div className="flex items-center justify-between w-full">
         <Label htmlFor={`switch-${label}`} className="text-sm font-medium">
           {label}
@@ -207,7 +234,7 @@ export function SwitchControl({
           id={`switch-${label}`}
           checked={checked}
           onCheckedChange={onCheckedChange}
-          className="data-[state=checked]:bg-[#4a80f5] h-6 w-11"
+          className="data-[state=checked]:bg-primary h-6 w-11"
         />
       </div>
     </div>
@@ -274,5 +301,114 @@ export function ResetButton({ onClick, className = "" }: ResetButtonProps) {
     >
       Restablecer valores
     </Button>
+  );
+}
+
+// Componente para control deslizante con entrada de texto (slider con input)
+interface SliderWithInputProps {
+  id?: string;
+  label?: string;
+  value?: number[];
+  defaultValue?: number[];
+  min?: number;
+  max?: number;
+  step?: number;
+  precision?: number;
+  onValueChange: (value: number[]) => void;
+  className?: string;
+}
+
+export function SliderWithInput({
+  id,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  label, // Marcado con comentario para indicar que no se usa
+  value: externalValue,
+  defaultValue = [0],
+  min = 0,
+  max = 100,
+  step = 1,
+  precision = 0,
+  onValueChange,
+  className,
+}: SliderWithInputProps) {
+  // Estado local para actualizaciones inmediatas durante el arrastre
+  const [localValue, setLocalValue] = useState<number[]>(externalValue || defaultValue);
+  const [inputValue, setInputValue] = useState<string>(
+    (externalValue?.[0] ?? defaultValue[0]).toFixed(precision)
+  );
+  
+  // Actualizar estado local cuando cambien las props externas
+  useEffect(() => {
+    if (externalValue && externalValue[0] !== localValue[0]) {
+      setLocalValue(externalValue);
+      setInputValue(externalValue[0].toFixed(precision));
+    }
+  }, [externalValue, precision, localValue]);
+  
+  // Aplicar debounce al callback de cambio para evitar actualizaciones excesivas
+  // Utilizando una función inline para evitar la advertencia sobre dependencies desconocidas
+  const debouncedOnValueChange = useCallback((value: number[]) => {
+    const debouncedFn = debounce((val: number[]) => {
+      onValueChange(val);
+    }, 50);
+    debouncedFn(value);
+    // Asegurarse de que el debounce se limpie cuando el componente se desmonte
+    return () => debouncedFn.cancel();
+  }, [onValueChange]);
+  
+  // Manejar cambio en el slider
+  const handleSliderChange = (value: number[]) => {
+    setLocalValue(value);
+    setInputValue(value[0].toFixed(precision));
+    debouncedOnValueChange(value);
+  };
+  
+  // Manejar cambio en el input
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+    const numValue = parseFloat(e.target.value);
+    
+    if (!isNaN(numValue)) {
+      // Limitar al rango min-max
+      const boundedValue = Math.min(Math.max(numValue, min), max);
+      setLocalValue([boundedValue]);
+      debouncedOnValueChange([boundedValue]);
+    }
+  };
+  
+  // Commit el valor al perder el foco
+  const handleInputBlur = () => {
+    const numValue = parseFloat(inputValue);
+    if (isNaN(numValue)) {
+      // Si no es un número válido, revertir al último valor válido
+      setInputValue(localValue[0].toFixed(precision));
+    } else {
+      // Limitar al rango y actualizar
+      const boundedValue = Math.min(Math.max(numValue, min), max);
+      setLocalValue([boundedValue]);
+      setInputValue(boundedValue.toFixed(precision));
+      onValueChange([boundedValue]); // Llamada directa sin debounce al perder el foco
+    }
+  };
+  
+  return (
+    <div className={`grid grid-cols-[1fr,80px] gap-2 items-center ${className}`}>
+      <Slider
+        id={id}
+        value={localValue}
+        min={min}
+        max={max}
+        step={step}
+        onValueChange={handleSliderChange}
+        className="col-span-1"
+      />
+      <Input
+        type="text"
+        value={inputValue}
+        onChange={handleInputChange}
+        onBlur={handleInputBlur}
+        className="col-span-1 h-8 text-center"
+      />
+    </div>
   );
 }

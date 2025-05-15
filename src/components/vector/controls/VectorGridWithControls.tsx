@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { VectorGrid, VectorGridProps } from '../VectorGrid';
+import { VectorGrid } from '../VectorGrid';
+import type { VectorGridProps } from '../core/types';
 import { VectorControlPanel } from './VectorControlPanel';
 import { VectorControlProvider, useVectorControl } from './VectorControlContext';
 

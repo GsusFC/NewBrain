@@ -6,7 +6,7 @@ export type AnimationType = ImportedAnimationType; // Re-exportar AnimationType
 // --- Tipos Reutilizables ---
 
 // Define los tipos de forma de vector soportados
-export type VectorShape = // `export` para que pueda ser usado en otros archivos
+export type VectorShape =
   | 'line'
   | 'arrow'
   | 'dot'
@@ -14,7 +14,11 @@ export type VectorShape = // `export` para que pueda ser usado en otros archivos
   | 'semicircle'
   | 'curve'
   | 'custom'
-  | 'userSvg'; // Añadido para SVG de usuario
+  | 'userSvg';
+
+// Tipos exportados para renderers
+export type StrokeLinecap = 'butt' | 'round' | 'square';
+export type RotationOrigin = 'start' | 'center' | 'end';
 
 // Define las opciones de relación de aspecto soportadas
 export type AspectRatioOption =
@@ -224,6 +228,7 @@ export interface UseVectorAnimationProps {
 export interface UseVectorAnimationReturn {
   animatedVectors: AnimatedVectorItem[];
   setAnimatedVectors: React.Dispatch<React.SetStateAction<AnimatedVectorItem[]>>; // Para manipulación externa si es necesario
+  triggerPulse: () => void; // Función para iniciar un pulso de animación
 }
 
 export interface UseContainerDimensionsArgs {

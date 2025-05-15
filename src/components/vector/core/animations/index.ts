@@ -5,12 +5,28 @@ import {
   calculateFlocking
 } from './basicAnimations';
 
+import {
+  calculateLissajous,
+  calculateSeaWaves,
+  calculatePerlinFlow,
+  calculateRandomLoop,
+  calculateTangenteClasica,
+  calculateGeometricPattern
+} from './advancedAnimations';
+
 // Re-exportar todas las animaciones y tipos
 export * from './animationTypes';
 export {
+  // Animaciones básicas
   calculateDirectionalFlow,
   calculateVortex,
-  calculateFlocking
+  calculateFlocking,
+  
+  // Animaciones avanzadas
+  calculateLissajous,
+  calculateSeaWaves,
+  calculatePerlinFlow,
+  calculateRandomLoop,
+  calculateTangenteClasica,
+  calculateGeometricPattern
 };
-
-// En el futuro, aquí se añadirán más exportaciones a medida que se implementen más animaciones

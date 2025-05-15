@@ -1,111 +1,186 @@
 /* app/globals.css */
 
+/* Estas directivas son necesarias para Tailwind CSS y son procesadas por PostCSS */
+/* Los warnings del linter pueden ignorarse de forma segura */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%; /* (#ffffff) */
-    --foreground: 0 0% 4%; /* (#0a0a0a) */
-    --card: 0 0% 100%; /* (#ffffff) */
-    --card-foreground: 0 0% 4%; /* (#0a0a0a) */
-    --popover: 0 0% 100%; /* (#ffffff) */
-    --popover-foreground: 0 0% 4%; /* (#0a0a0a) */
-    --primary: 0 0% 45%; /* (#737373) */
-    --primary-foreground: 0 0% 98%; /* (#fafafa) */
-    --secondary: 0 0% 96%; /* (#f5f5f5) */
-    --secondary-foreground: 0 0% 9%; /* (#171717) */
-    --muted: 0 0% 96%; /* (#f5f5f5) */
-    --muted-foreground: 0 0% 45%; /* (#717171) */
-    --accent: 0 0% 96%; /* (#f5f5f5) */
-    --accent-foreground: 0 0% 9%; /* (#171717) */
-    --destructive: 357 100% 45%; /* (#e7000b) */
-    --destructive-foreground: 0 0% 96%; /* (#f5f5f5) */
-    --border: 0 0% 90%; /* (#e5e5e5) */
-    --input: 0 0% 90%; /* (#e5e5e5) */
-    --ring: 0 0% 63%; /* (#a1a1a1) */
-    --chart-1: 0 0% 45%; /* (#737373) */
-    --chart-2: 0 0% 45%; /* (#737373) */
-    --chart-3: 0 0% 45%; /* (#737373) */
-    --chart-4: 0 0% 45%; /* (#737373) */
-    --chart-5: 0 0% 45%; /* (#737373) */
-    --sidebar: 0 0% 98%; /* (#fafafa) */
-    --sidebar-foreground: 0 0% 4%; /* (#0a0a0a) */
-    --sidebar-primary: 0 0% 9%; /* (#171717) */
-    --sidebar-primary-foreground: 0 0% 98%; /* (#fafafa) */
-    --sidebar-accent: 0 0% 96%; /* (#f5f5f5) */
-    --sidebar-accent-foreground: 0 0% 9%; /* (#171717) */
-    --sidebar-border: 0 0% 90%; /* (#e5e5e5) */
-    --sidebar-ring: 0 0% 63%; /* (#a1a1a1) */
-    --font-sans: Geist Mono, monospace;
-    --font-serif: Geist Mono, monospace;
-    --font-mono: Geist Mono, monospace;
-    --radius: 0rem;
-    --shadow-2xs: 0px 1px 0px 0px hsl(0 0% 0% / 0.00);
-    --shadow-xs: 0px 1px 0px 0px hsl(0 0% 0% / 0.00);
-    --shadow-sm: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
-    --shadow: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
-    --shadow-md: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 2px 4px -1px hsl(0 0% 0% / 0.00);
-    --shadow-lg: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 4px 6px -1px hsl(0 0% 0% / 0.00);
-    --shadow-xl: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 8px 10px -1px hsl(0 0% 0% / 0.00);
-    --shadow-2xl: 0px 1px 0px 0px hsl(0 0% 0% / 0.00);
-  }
+    /* Paleta de grises base */
+    --gray-50: #fafafa;
+    --gray-100: #f5f5f5;
+    --gray-200: #e5e5e5;
+    --gray-300: #d4d4d4;
+    --gray-400: #a3a3a3;
+    --gray-500: #737373;
+    --gray-600: #525252;
+    --gray-700: #404040;
+    --gray-800: #262626;
+    --gray-900: #171717;
+    --gray-950: #0a0a0a;
 
-  .dark {
-    --background: 0 0% 6%; /* Negro (#0a0a0a) */
-    --foreground: 0 0% 98%; /* Blanco (#fafafa) */
-    --card: 0 0% 10%; /* (#191919) */
-    --card-foreground: 0 0% 98%; /* (#fafafa) */
-    --popover: 0 0% 15%; /* (#262626) */
-    --popover-foreground: 0 0% 98%; /* (#fafafa) */
-    --primary: 0 0% 45%; /* (#737373) */
-    --primary-foreground: 0 0% 98%; /* (#fafafa) */
-    --secondary: 0 0% 15%; /* (#262626) */
-    --secondary-foreground: 0 0% 98%; /* (#fafafa) */
-    --muted: 0 0% 15%; /* (#262626) */
-    --muted-foreground: 0 0% 63%; /* (#a1a1a1) */
-    --accent: 0 0% 25%; /* (#404040) */
-    --accent-foreground: 0 0% 98%; /* (#fafafa) */
-    --destructive: 359 100% 70%; /* (#ff6467) */
-    --destructive-foreground: 0 0% 15%; /* (#262626) */
-    --border: 0 0% 22%; /* (#383838) */
-    --input: 0 0% 32%; /* (#525252) */
-    --ring: 0 0% 45%; /* (#737373) */
-    --chart-1: 0 0% 45%; /* (#737373) */
-    --chart-2: 0 0% 45%; /* (#737373) */
-    --chart-3: 0 0% 45%; /* (#737373) */
-    --chart-4: 0 0% 45%; /* (#737373) */
-    --chart-5: 0 0% 45%; /* (#737373) */
-    --sidebar: 0 0% 9%; /* (#171717) */
-    --sidebar-foreground: 0 0% 98%; /* (#fafafa) */
-    --sidebar-primary: 0 0% 98%; /* (#fafafa) */
-    --sidebar-primary-foreground: 0 0% 9%; /* (#171717) */
-    --sidebar-accent: 0 0% 15%; /* (#262626) */
-    --sidebar-accent-foreground: 0 0% 98%; /* (#fafafa) */
-    --sidebar-border: 0 0% 100%; /* (#ffffff) */
-    --sidebar-ring: 0 0% 32%; /* (#525252) */
+    /* Variables semánticas - Modo claro */
+    --background: var(--gray-50);
+    --foreground: var(--gray-950);
+    --card: var(--gray-50);
+    --card-foreground: var(--gray-950);
+    --popover: var(--gray-50);
+    --popover-foreground: var(--gray-950);
+    --primary: var(--gray-500);
+    --primary-foreground: var(--gray-50);
+    --secondary: var(--gray-100);
+    --secondary-foreground: var(--gray-900);
+    --muted: var(--gray-100);
+    --muted-foreground: var(--gray-500);
+    --accent: var(--gray-100);
+    --accent-foreground: var(--gray-900);
+    --destructive: #e7000b;
+    --destructive-foreground: var(--gray-100);
+    --border: var(--gray-200);
+    --input: var(--gray-200);
+    --ring: var(--gray-400);
+
+    /* Variables específicas de la aplicación */
+    --chart-1: var(--gray-500);
+    --chart-2: var(--gray-600);
+    --chart-3: var(--gray-700);
+    --chart-4: var(--gray-800);
+    --chart-5: var(--gray-900);
+    
+    --sidebar: var(--gray-50);
+    --sidebar-foreground: var(--gray-950);
+    --sidebar-primary: var(--gray-900);
+    --sidebar-primary-foreground: var(--gray-50);
+    --sidebar-accent: var(--gray-100);
+    --sidebar-accent-foreground: var(--gray-900);
+    --sidebar-border: var(--gray-200);
+    --sidebar-ring: var(--gray-400);
+
+    /* Tipografía y radios */
     --font-sans: Geist Mono, monospace;
     --font-serif: Geist Mono, monospace;
     --font-mono: Geist Mono, monospace;
     --radius: 0rem;
-    --shadow-2xs: 0px 1px 0px 0px hsl(0 0% 0% / 0.00);
-    --shadow-xs: 0px 1px 0px 0px hsl(0 0% 0% / 0.00);
-    --shadow-sm: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
-    --shadow: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
-    --shadow-md: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 2px 4px -1px hsl(0 0% 0% / 0.00);
-    --shadow-lg: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 4px 6px -1px hsl(0 0% 0% / 0.00);
-    --shadow-xl: 0px 1px 0px 0px hsl(0 0% 0% / 0.00), 0px 8px 10px -1px hsl(0 0% 0% / 0.00);
-    --shadow-2xl: 0px 1px 0px 0px hsl(0 0% 0% / 0.00);
+
+    /* Sistema de sombras */
+    --shadow-color: 0deg 0% 0%;
+    --shadow-strength: 1%;
+    --shadow-2xs: 0 1px 2px hsl(var(--shadow-color) / calc(var(--shadow-strength) + 2%));
+    --shadow-xs: 0 1px 3px hsl(var(--shadow-color) / calc(var(--shadow-strength) + 3%));
+    --shadow-sm: 0 1px 4px hsl(var(--shadow-color) / calc(var(--shadow-strength) + 4%));
+    --shadow: 0 2px 4px hsl(var(--shadow-color) / calc(var(--shadow-strength) + 5%));
+    --shadow-md: 0 3px 6px hsl(var(--shadow-color) / calc(var(--shadow-strength) + 6%));
+    --shadow-lg: 0 4px 8px hsl(var(--shadow-color) / calc(var(--shadow-strength) + 7%));
+    --shadow-xl: 0 6px 12px hsl(var(--shadow-color) / calc(var(--shadow-strength) + 8%));
+    --shadow-2xl: 0 8px 16px hsl(var(--shadow-color) / calc(var(--shadow-strength) + 9%));
+  }
+  
+  .dark {
+    /* Variables semánticas - Modo oscuro */
+    --background: var(--gray-950);
+    --foreground: var(--gray-50);
+    --card: var(--gray-900);
+    --card-foreground: var(--gray-50);
+    --popover: var(--gray-800);
+    --popover-foreground: var(--gray-50);
+    --primary: var(--gray-500);
+    --primary-foreground: var(--gray-50);
+    --secondary: var(--gray-800);
+    --secondary-foreground: var(--gray-50);
+    --muted: var(--gray-800);
+    --muted-foreground: var(--gray-400);
+    --accent: var(--gray-700);
+    --accent-foreground: var(--gray-50);
+    --destructive: #ff6467;
+    --destructive-foreground: var(--gray-800);
+    --border: var(--gray-700);
+    --input: var(--gray-600);
+    --ring: var(--gray-500);
+
+    /* Variables específicas de la aplicación */
+    --chart-1: var(--gray-500);
+    --chart-2: var(--gray-400);
+    --chart-3: var(--gray-300);
+    --chart-4: var(--gray-200);
+    --chart-5: var(--gray-100);
+    
+    --sidebar: var(--gray-900);
+    --sidebar-foreground: var(--gray-50);
+    --sidebar-primary: var(--gray-50);
+    --sidebar-primary-foreground: var(--gray-900);
+    --sidebar-accent: var(--gray-800);
+    --sidebar-accent-foreground: var(--gray-50);
+    --sidebar-border: var(--gray-50);
+    --sidebar-ring: var(--gray-600);
+
+    /* Sistema de sombras para modo oscuro */
+    --shadow-color: 0deg 0% 100%;
+    --shadow-strength: 0.5%;
   }
 }
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: var(--border);
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--background);
+    color: var(--foreground);
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Solución robusta para eliminar marcadores de desarrollo */
+  [data-component-name],
+  div[data-component-name],
+  span[data-component-name],
+  button[data-component-name] {
+    all: unset !important;
+    display: contents !important;
+  }
+
+  /* Reglas específicas para los elementos del ToggleGroup */
+  [role="radio"][data-radix-collection-item] {
+    display: inline-flex !important;
+  }
+
+  /* Reglas para mantener el estilo de texto dentro de elementos con data-component */
+  [data-component-name] * {
+    all: revert;
+  }
+  
+  /* Estilos para inputs que respetan el tema */
+  input, select, textarea {
+    color: var(--foreground);
+    background-color: var(--background);
+    border-color: var(--border);
+  }
+
+  /* Estilos para Slider que respetan el tema */
+  [role="slider"] {
+    background-color: var(--background);
+    border: 2px solid var(--primary);
+    transition: all 0.2s ease-in-out;
+  }
+  
+  [role="slider"]:hover {
+    background-color: color-mix(in srgb, var(--primary) 20%, transparent);
+  }
+  
+  [role="slider"]:active,
+  [role="slider"][data-dragging="true"] {
+    background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  
+  /* Track y range del slider */
+  .SliderTrack {
+    background-color: var(--muted);
+    height: 8px;
+  }
+  
+  .SliderRange {
+    background-color: color-mix(in srgb, var(--primary) 70%, transparent);
+    height: 8px;
   }
 }

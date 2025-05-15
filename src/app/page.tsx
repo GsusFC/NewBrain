@@ -3,6 +3,7 @@
 
 import VectorPlayground from '@/components/vector/VectorPlayground';
 
-export default function Home() {
+export default function Page() {
   return <VectorPlayground />;
 }
+

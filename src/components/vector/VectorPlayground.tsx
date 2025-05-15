@@ -1,20 +1,21 @@
 'use client';
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { VectorGrid } from './VectorGrid';
+import { useGridContainer } from '@/hooks/vector/useGridContainer';
+import type { AspectRatioOption } from '@/hooks/vector/useContainerDimensions';
 // Importamos todos los tipos necesarios, incluida la referencia de VectorGrid
 import type { 
   VectorGridProps, 
   GridSettings, 
   VectorSettings, 
-  AspectRatioOption,
   VectorGridRef 
 } from './core/types';
-import { AspectRatioManager } from './core/AspectRatioManager';
 import { LeftControlPanel } from './controls/LeftControlPanel';
 import { RightControlPanel } from './controls/RightControlPanel';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 // Los valores iniciales se han configurado para un resultado visual interesante por defecto
 // Extendemos VectorGridProps para incluir una key que nos ayude a forzar la reconstrucción del componente
@@ -33,11 +34,11 @@ const INITIAL_GRID_PROPS: ExtendedVectorGridProps = {
     vectorShape: 'arrow' as const,
     vectorLength: 24,
     vectorWidth: 4,
-    vectorColor: '#00aaff',
+    vectorColor: '#3b82f6',
     strokeLinecap: 'round' as const,
     rotationOrigin: 'center' as const
   },
-  backgroundColor: '#000000',
+  backgroundColor: 'bg-background',
   animationType: 'smoothWaves',
   animationProps: {
     waveFrequency: 0.00025,
@@ -61,88 +62,86 @@ const INITIAL_GRID_PROPS: ExtendedVectorGridProps = {
 export default function VectorPlayground() {
   const [gridProps, setGridProps] = useState<ExtendedVectorGridProps>(INITIAL_GRID_PROPS);
   const vectorGridRef = useRef<VectorGridRef>(null);
-  const gridContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Usar nuestro nuevo hook para gestionar el contenedor y sus dimensiones
+  const { containerRef, containerSize, calculateOptimalGrid } = useGridContainer();
+  
+  // Estado para indicar recálculo de la cuadrícula
+  const [isRecalculating, setIsRecalculating] = useState(false);
   
   // Referencia para el elemento que podría tener el foco cuando se presiona espacio
   // Evita activar la pausa si el usuario está escribiendo en un input
   const activeElementRef = useRef<Element | null>(null);
+  
+  // Estado para el efecto de fade al pausar/reanudar
+  const [fade, setFade] = useState(1);
+  
+  // Aplicar el efecto de fade cuando cambia el estado de pausa
+  useEffect(() => {
+    setFade(gridProps.isPaused ? 0.7 : 1);
+  }, [gridProps.isPaused]);
+
+  // Modificamos la función para usar el nuevo hook que utiliza dimensiones reales
+  const calculateOptimalGridDimensions = useCallback((aspectRatio: string, spacing: number, customAspectRatio?: { width: number; height: number }) => {
+    // Usar el nuevo método que utiliza dimensiones reales del contenedor
+    return calculateOptimalGrid(
+      aspectRatio as AspectRatioOption, 
+      spacing, 
+      customAspectRatio
+    );
+  }, [calculateOptimalGrid]);
+
+  // Función para manejar las propiedades de animación
+  const mergeAnimationProps = useCallback((prev: ExtendedVectorGridProps, newValues: Partial<ExtendedVectorGridProps>) => {
+    if (newValues.animationProps && prev.animationProps) {
+      return {
+        ...prev,
+        ...newValues,
+        animationProps: {
+          ...prev.animationProps,
+          ...newValues.animationProps
+        }
+      };
+    }
+    return { ...prev, ...newValues };
+  }, []);
 
   // Callback general para actualizar props. Los paneles podrían filtrar qué envían.
   const handlePropsChange = useCallback((newValues: Partial<ExtendedVectorGridProps>) => {
     setGridProps(prev => {
       // Manejo especial para fusionar animationProps si existen en ambos
       if (newValues.animationProps && prev.animationProps) {
-        return {
-          ...prev,
-          ...newValues,
-          animationProps: {
-            ...prev.animationProps,
-            ...newValues.animationProps
-          }
-        }
+        return mergeAnimationProps(prev, newValues);
       }
       
       // Manejo especial para aspect ratio
       if (newValues.aspectRatio && newValues.aspectRatio !== prev.aspectRatio) {
         // Si cambia el aspect ratio y NO hay cambio explícito de gridSettings
-        // deberíamos ajustar automáticamente la configuración de la cuadrícula
         if (!newValues.gridSettings) {
           const spacing = prev.gridSettings?.spacing || 30;
-          let optimalRows, optimalCols;
+          const { rows, cols } = calculateOptimalGridDimensions(
+            newValues.aspectRatio, 
+            spacing, 
+            newValues.customAspectRatio || prev.customAspectRatio
+          );
           
-          // Determinar dimensiones óptimas según el aspect ratio
-          switch (newValues.aspectRatio) {
-            case '1:1':
-              optimalRows = optimalCols = Math.max(8, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.6 / spacing));
-              break;
-            case '2:1':
-              optimalRows = Math.floor(window.innerHeight * 0.7 / spacing);
-              optimalCols = optimalRows * 2;
-              break;
-            case '16:9':
-              optimalRows = 9;
-              optimalCols = 16;
-              break;
-            case 'custom':
-              if (newValues.customAspectRatio) {
-                const ratio = newValues.customAspectRatio.width / newValues.customAspectRatio.height;
-                optimalRows = 12; // Base fija de filas
-                optimalCols = Math.round(optimalRows * ratio);
-              } else {
-                // Mantener configuración actual si no hay custom aspect ratio definido
-                optimalRows = prev.gridSettings?.rows || 12;
-                optimalCols = prev.gridSettings?.cols || 18;
-              }
-              break;
-            default: // 'auto'
-              // No ajustamos filas/columnas, mantener configuración actual
-              return {
-                ...prev,
-                ...newValues,
-                key: `auto-${Date.now()}`
-              };
-          }
-          
+          // Actualizar gridSettings con los nuevos valores calculados
           return {
             ...prev,
             ...newValues,
             gridSettings: {
               ...prev.gridSettings,
-              rows: optimalRows,
-              cols: optimalCols
-            },
-            key: `${newValues.aspectRatio}-${Date.now()}`
+              rows,
+              cols
+            }
           };
         }
       }
       
-      // Si no, simplemente fusionar como se hace normalmente
-      return {
-        ...prev,
-        ...newValues
-      }
+      // Manejo estándar para todos los demás casos
+      return { ...prev, ...newValues };
     });
-  }, []);
+  }, [calculateOptimalGridDimensions, mergeAnimationProps]);
 
   // Para actualizar específicamente la configuración del grid
   const handleGridSettingsChange = useCallback((newGridSettings: Partial<GridSettings>) => {
@@ -192,7 +191,8 @@ export default function VectorPlayground() {
         
         // Verificar que no estemos en un campo editable
         if (!['input', 'textarea', 'select', 'button'].includes(tagName) && !isEditable) {
-          e.preventDefault(); // Evitar scroll u otros comportamientos predeterminados
+          e.preventDefault();  
+
           togglePause();
         }
       }
@@ -207,46 +207,44 @@ export default function VectorPlayground() {
     };
   }, [togglePause]);
 
-  // Comprobar si se están usando dimensiones fijas
-  const dimensionsAreFixedByProps = typeof gridProps.width === 'number' && typeof gridProps.height === 'number';
-  
-  // Cálculo del aspect ratio resultante cuando se usan dimensiones fijas
-  const calculatedFixedAspectRatio = dimensionsAreFixedByProps && gridProps.width && gridProps.height
-    ? (gridProps.width / gridProps.height).toFixed(2)
-    : null;
-
-  // Ya no necesitamos estos estados, puesto que ahora son manejados por AspectRatioManager
-  // Observar dimensiones del contenedor para proporcionarlas a AspectRatioManager
-  const [observedDimensions, setObservedDimensions] = useState<{
-    width: number;
-    height: number;
-  } | null>(null);
-
-  // Usar un efecto para observar las dimensiones del contenedor
+  // Añadir un efecto para recalcular la grid cuando cambie el tamaño del contenedor
   useEffect(() => {
-    if (!gridContainerRef.current) return;
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        setObservedDimensions({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
+    if (gridProps.aspectRatio && gridProps.aspectRatio !== 'auto' && containerSize.width > 10 && containerSize.height > 10) {
+      setIsRecalculating(true);
+      
+      const spacing = gridProps.gridSettings?.spacing || 30;
+      const { rows, cols } = calculateOptimalGridDimensions(
+        gridProps.aspectRatio,
+        spacing,
+        gridProps.customAspectRatio
+      );
+      
+      // Solo actualizar si las dimensiones han cambiado significativamente
+      if (
+        !gridProps.gridSettings?.rows || 
+        !gridProps.gridSettings?.cols ||
+        Math.abs(gridProps.gridSettings.rows - rows) > 1 ||
+        Math.abs(gridProps.gridSettings.cols - cols) > 2
+      ) {
+        handlePropsChange({
+          gridSettings: {
+            ...gridProps.gridSettings,
+            rows,
+            cols
+          }
         });
       }
-    });
-
-    observer.observe(gridContainerRef.current);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
+      
+      // Pequeño retraso antes de quitar el indicador de recálculo
+      const timer = setTimeout(() => setIsRecalculating(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [containerSize, calculateOptimalGridDimensions, gridProps.aspectRatio, gridProps.customAspectRatio, gridProps.gridSettings, handlePropsChange]);
 
   return (
-    <div className="grid grid-cols-[300px_1fr_300px] lg:grid-cols-[360px_1fr_360px] w-full h-screen max-h-screen overflow-hidden bg-slate-900 text-slate-50">
+    <div className="grid grid-cols-[300px_1fr_300px] lg:grid-cols-[360px_1fr_360px] w-full h-screen max-h-screen overflow-hidden bg-background text-foreground">
       {/* Columna 1: Panel Izquierdo (Animaciones, Exportar, etc.) */}
-      <div className="border-r border-slate-800 overflow-auto">
+      <div className="border-r border-border overflow-auto bg-card/90">
         <LeftControlPanel
           currentProps={gridProps}
           onPropsChange={handlePropsChange}
@@ -258,7 +256,7 @@ export default function VectorPlayground() {
       {/* Columna 2: Display Central */}
       <div className="flex flex-col">
         {/* Menú Superior */}
-        <div className="h-14 border-b border-slate-800 bg-slate-800/50 px-4 flex items-center justify-between">
+        <div className="h-14 border-b border-border bg-card/80 px-4 flex items-center justify-between">
           <div className="flex items-center space-x-6">
             {/* Toggle Canvas/SVG */}
             <div className="flex items-center space-x-2">
@@ -278,16 +276,24 @@ export default function VectorPlayground() {
               <Input 
                 id="throttleMsHeader" 
                 type="number" 
+                min={1}
+                max={240}
                 value={gridProps.throttleMs ? (1000 / gridProps.throttleMs).toFixed(0) : '60'} 
                 onChange={(e) => {
                   const fps = parseInt(e.target.value, 10);
-                  if (!isNaN(fps) && fps > 0) {
+                  if (!isNaN(fps) && fps > 0 && fps <= 240) {
                     handlePropsChange({ throttleMs: 1000 / fps });
                   }
                 }}
+                aria-label="Cuadros por segundo"
                 className="w-16 text-center"
               />
             </div>
+          </div>
+          
+          {/* Selector de tema */}
+          <div className="flex items-center">
+            <ThemeToggle />
             
             {/* Info */}
             <div className="text-sm font-medium">
@@ -299,8 +305,10 @@ export default function VectorPlayground() {
             {/* Botón de Pausa */}
             <button 
               onClick={togglePause}
-              className="p-2 rounded hover:bg-slate-700 transition-colors group"
+              className="p-2 rounded hover:bg-muted transition-colors group"
               title={`${gridProps.isPaused ? "Reanudar" : "Pausar"} [Espacio]`}
+              aria-label={gridProps.isPaused ? "Reanudar animación" : "Pausar animación"}
+              aria-pressed={gridProps.isPaused}
             >
               {gridProps.isPaused ? 
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> :
@@ -310,11 +318,26 @@ export default function VectorPlayground() {
           </div>
         </div>
         
-        {/* Área Principal */}
-        <div className="flex-1 p-4 overflow-hidden">
-          <div className="w-full h-full bg-black rounded-lg overflow-hidden">
-            {/* Extracción estable de key para evitar recreaciones de funciones */}
-            {(() => {
+        {/* Área Principal - Conectamos el ref del contenedor */}
+        <div className="flex-1 p-4 overflow-hidden" role="main">
+          <div 
+            ref={containerRef}
+            className="w-full h-full bg-background rounded-lg overflow-hidden border border-muted"
+            aria-label="Animación de vectores"
+            style={{
+              opacity: fade,
+              transition: 'opacity 0.3s cubic-bezier(.4,0,.2,1)',
+              position: 'relative'
+            }}
+          >
+            {/* Indicador visual de recálculo */}
+            {isRecalculating && (
+              <div className="absolute top-3 right-3 bg-black/80 text-white px-2 py-1 rounded text-xs font-mono animate-pulse">
+                Recalculando grid...
+              </div>
+            )}
+            {/* VectorGrid con renderizado optimizado */}
+            {useMemo(() => {
               // Extraer key de forma estable
               const gridKey = gridProps.key;
               // Crear una copia limpia de las props sin key
@@ -328,48 +351,15 @@ export default function VectorPlayground() {
                   {...propsWithoutKey}
                 />
               );
-            })()}
+            }, [gridProps])}
           </div>
         </div>
         
-        {/* Panel expandible de configuración de aspect ratio (aparece encima del menú inferior) */}
-        <div className="relative">
-          {/* Menú Inferior con controles de aspectRatio */}
-          <div className="border-t border-slate-700 bg-slate-800/50 px-4 py-3 flex flex-col">
-            {/* Control de Aspect Ratio con el nuevo AspectRatioManager */}
-            <AspectRatioManager
-              initialAspectRatio={gridProps.aspectRatio as AspectRatioOption}
-              initialGridSettings={gridProps.gridSettings as GridSettings}
-              customAspectRatio={gridProps.customAspectRatio}
-              containerWidth={observedDimensions?.width || 800}
-              containerHeight={observedDimensions?.height || 600}
-              onConfigChange={(config) => {
-                handlePropsChange({
-                  aspectRatio: config.aspectRatio,
-                  gridSettings: config.gridSettings,
-                  customAspectRatio: config.customAspectRatio,
-                  // Agregar una key única para forzar recreación completa
-                  key: `${config.aspectRatio}-${Date.now()}`
-                });
-              }}
-              disabled={dimensionsAreFixedByProps}
-            />
-            
-            {/* Información de aspect ratio fijo si está configurado por props */}
-            {dimensionsAreFixedByProps && (
-              <div className="mt-2 p-2 bg-slate-700/50 rounded-sm">
-                <span className="text-xs text-amber-300">
-                  ⓘ Aviso: Las dimensiones están fijadas a través de props ({calculatedFixedAspectRatio}:1). 
-                  El ajuste de aspect ratio está desactivado.
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* El menú inferior con AspectRatioManager ha sido movido al panel derecho */}
       </div>
       
       {/* Columna 3: Panel Derecho (Grid Settings, Vector Settings) */}
-      <div className="border-l border-slate-800 overflow-auto">
+      <div className="border-l border-border overflow-auto bg-card/90">
         <RightControlPanel 
           currentProps={gridProps}
           onPropsChange={handlePropsChange}

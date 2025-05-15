@@ -1,5 +1,4 @@
 import * as React from "react"
-
 import { cn } from "@/lib/utils"
 
 const Card = React.forwardRef<
@@ -9,7 +8,7 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      "rounded-xl border bg-card text-card-foreground shadow",
       className
     )}
     {...props}
@@ -32,16 +31,25 @@ CardHeader.displayName = "CardHeader"
 const CardTitle = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <h3
-    ref={ref}
-    className={cn(
-      "text-lg font-medium leading-none tracking-tight",
-      className
-    )}
-    {...props}
-  />
-))
+>(({ className, children, ...props }, ref) => {
+  if (process.env.NODE_ENV !== 'production' && (!children || (typeof children === 'string' && children.trim() === ''))) {
+    // eslint-disable-next-line no-console
+    console.warn('CardTitle: Se recomienda proveer contenido visible para accesibilidad.');
+  }
+  return (
+    <h3
+      ref={ref}
+      className={cn(
+        "text-lg font-medium leading-none tracking-tight",
+        className
+      )}
+      aria-label={!children ? 'Título de tarjeta' : undefined}
+      {...props}
+    >
+      {children || <span className="sr-only">Título de tarjeta</span>}
+    </h3>
+  );
+});
 CardTitle.displayName = "CardTitle"
 
 const CardDescription = React.forwardRef<

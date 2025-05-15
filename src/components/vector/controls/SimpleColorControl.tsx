@@ -20,24 +20,26 @@ export function SimpleColorControl({
   disabled = false 
 }: SimpleColorControlProps) {
   const isFunction = typeof value === 'function';
-  const effectiveValue = isFunction ? '#4a80f5' : value;
+  const effectiveValue = isFunction ? '#737373' : value;
   
   const isGradient = typeof effectiveValue !== 'string';
   
   // Estado para el color sólido
   const [solidColor, setSolidColor] = useState(
-    typeof effectiveValue === 'string' ? effectiveValue : '#4a80f5'
+    typeof effectiveValue === 'string' ? effectiveValue : '#737373'
   );
   
   // Colores predefinidos para selección rápida
   const presetColors = [
-    '#4a80f5', // Azul (color por defecto)
+  'var(--primary)', // color gris neutro
+  'var(--primary)', // gris neutro
+
+    
     '#f54a80', // Rosa
     '#4af580', // Verde menta
     '#f5804a', // Naranja
     '#804af5', // Púrpura
     '#f5f54a', // Amarillo
-    '#4af5f5', // Cian
     '#ffffff', // Blanco
     '#000000', // Negro
   ];
@@ -109,7 +111,7 @@ export function SimpleColorControl({
             variant="outline"
             size="sm"
             className="w-full text-xs"
-            onClick={() => onChange('#4a80f5')}
+            onClick={() => onChange('#737373')}
             disabled={disabled}
           >
             Convertir a color sólido

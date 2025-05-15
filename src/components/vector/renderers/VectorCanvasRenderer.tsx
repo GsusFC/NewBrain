@@ -1,27 +1,28 @@
 // Ruta: src/components/vector/renderers/VectorCanvasRenderer.tsx
 'use client';
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import type { 
+import React, { useRef, useEffect, useState } from 'react';
+import type {
   AnimatedVectorItem,
   VectorColorValue,
   VectorShape,
   StrokeLinecap,
   RotationOrigin,
   GradientConfig,
+  VectorRenderProps,
 } from '../core/types';
 
 // Importar Canvg para renderizado de SVG en canvas
 // Nota: Esto requiere instalar la dependencia si no está ya instalada
 // npm install canvg o yarn add canvg
-let Canvg: any;
+let Canvg: typeof import('canvg').Canvg | undefined;
 
 // Cargar Canvg de forma dinámica solo en el cliente
 if (typeof window !== 'undefined') {
   import('canvg').then((module) => {
     Canvg = module.Canvg;
-  }).catch(err => {
-    console.error('Error al cargar Canvg:', err);
+  }).catch(() => {
+    // Error al cargar Canvg
   });
 }
 
@@ -37,7 +38,7 @@ interface VectorCanvasRendererProps {
   baseStrokeLinecap?: StrokeLinecap;
   baseVectorShape: VectorShape;
   baseRotationOrigin: RotationOrigin;
-  customRenderer?: (renderProps: any, ctx: CanvasRenderingContext2D) => void;
+  customRenderer?: (renderProps: VectorRenderProps, ctx: CanvasRenderingContext2D) => void;
   userSvgString?: string;
   userSvgPreserveAspectRatio?: string;
   onVectorClick?: (item: AnimatedVectorItem, event: React.MouseEvent) => void;
@@ -102,7 +103,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
         const cacheCanvas = document.createElement('canvas');
         const ctx = cacheCanvas.getContext('2d');
         if (!ctx) {
-          console.error('No se pudo obtener contexto 2D para el cache de SVG');
+          // No se pudo obtener contexto 2D para el cache de SVG
           return;
         }
         
@@ -116,17 +117,17 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
         // Renderizar el SVG en el canvas usando Canvg
         const v = await Canvg.from(ctx, userSvgString, {
           ignoreMouse: true,
-          ignoreAnimation: true,
-          preserveAspectRatio: userSvgPreserveAspectRatio || 'xMidYMid meet'
+          ignoreAnimation: true
+          // 'preserveAspectRatio' no es una opción válida en IOptions de Canvg
         });
         
         await v.render();
         
         // Guardar el canvas en la referencia
         userSvgCacheRef.current = cacheCanvas;
-        console.log('SVG renderizado correctamente en cache');
+        // console.log('SVG renderizado correctamente en cache');
       } catch (err) {
-        console.error('Error al renderizar SVG en cache:', err);
+        // console.error('Error al renderizar SVG en cache:', err);
         userSvgCacheRef.current = null;
       }
     };
@@ -172,10 +173,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
     
     // Renderizar cada vector
     vectors.forEach(item => {
-      const { baseX, baseY, currentAngle, lengthFactor = 1, widthFactor = 1, shape: itemShape } = item;
-      
-      // Determinar la forma a utilizar (del item o la base)
-      const vectorShape = itemShape || baseVectorShape;
+      const { baseX, baseY, currentAngle, lengthFactor = 1, widthFactor = 1 } = item;
       
       // Determinar longitud y ancho del vector - con validación de valores finitos
       let actualVectorLength = typeof baseVectorLength === 'function' 
@@ -197,7 +195,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
       ctx.save();
       
       // Determinar el color a utilizar (string, función o gradiente)
-      let styleColor: string | CanvasGradient = '#000000'; // Color por defecto
+      let styleColor: string | CanvasGradient = "var(--primary)"; // Color por defecto
       
       if (typeof baseVectorColor === 'string') {
         // Color simple (string)
@@ -211,7 +209,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
             styleColor = calculatedColor;
           }
         } catch (err) {
-          console.error('Error al calcular color dinámico:', err);
+          // console.error('Error al calcular color dinámico:', err);
         }
       } else if (baseVectorColor && typeof baseVectorColor === 'object') {
         // Posible gradiente
@@ -289,16 +287,16 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
                 
                 gradient.addColorStop(
                   offset, 
-                  stop.color || '#000000' // Valor por defecto si el color es inválido
+                  stop.color || "var(--primary)" // Valor por defecto si el color es inválido
                 );
               } catch (err) {
-                console.error('Error al añadir parada de color:', err);
+                // console.error('Error al añadir parada de color:', err);
               }
             }
             
             styleColor = gradient;
           } catch (err) {
-            console.error('Error al crear gradiente:', err);
+            // console.error('Error al crear gradiente:', err);
           }
         }
       }
@@ -389,7 +387,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
             try {
               // Calcular dimensiones para mantener proporciones
               const svgSize = Math.max(actualVectorLength, actualStrokeWidth * 5);
-              const svgScale = svgSize / 100; // El cache se renderiza a 100x100
+              // const svgScale = svgSize / 100; // El cache se renderiza a 100x100
               
               // Centrar el SVG en el punto de origen
               const offsetX = 0; // Podemos ajustar esto para alinear mejor
@@ -403,9 +401,9 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
               );
               
               // Mostrar debug info si es necesario (quitar en producción)
-              console.log(`SVG renderizado: tamaño ${svgSize}px, escala ${svgScale}`);
+              // console.log(`SVG renderizado: tamaño ${svgSize}px, escala ${svgScale}`);
             } catch (err) {
-              console.error('Error al renderizar SVG cacheado:', err);
+              // console.error('Error al renderizar SVG cacheado:', err);
               
               // Fallback: Renderizar un rectángulo simple como indicador de error
               ctx.fillStyle = 'rgba(255,0,0,0.3)';

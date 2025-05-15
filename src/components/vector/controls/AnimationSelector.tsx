@@ -8,7 +8,8 @@ import {
   AnimationType,
   DirectionalFlowProps,
   FlockingProps,
-  VortexProps
+  VortexProps,
+  MouseInteractionProps
 } from '../core/animations';
 
 interface AnimationSelectorProps {
@@ -42,6 +43,14 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
     alignmentForce: 1.0,
     cohesionForce: 0.8
   });
+  
+  // Añadir estado para propiedades de interacción con el ratón
+  const [mouseInteractionProps, setMouseInteractionProps] = useState<MouseInteractionProps>({
+    interactionRadius: 150,
+    effectType: 'attract',
+    effectStrength: 1.0,
+    falloffFactor: 1.0
+  });
 
   // Manejar cambio de tipo de animación
   const handleAnimationTypeChange = (type: AnimationType) => {
@@ -57,6 +66,9 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
         break;
       case 'flocking':
         props = flockingProps;
+        break;
+      case 'mouseInteraction':
+        props = mouseInteractionProps;
         break;
       // Otros tipos tendrán sus propias propiedades
     }
@@ -84,6 +96,8 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
       setVortexProps(prevProps => ({ ...prevProps, ...props }));
     } else if (value.animationType === 'flocking') {
       setFlockingProps(prevProps => ({ ...prevProps, ...props }));
+    } else if (value.animationType === 'mouseInteraction') {
+      setMouseInteractionProps(prevProps => ({ ...prevProps, ...props }));
     }
   };
 
@@ -105,6 +119,7 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
             <SelectItem value="directionalFlow">Flujo direccional</SelectItem>
             <SelectItem value="vortex">Vórtice</SelectItem>
             <SelectItem value="flocking">Comportamiento de bandada</SelectItem>
+            <SelectItem value="mouseInteraction">Interacción con el ratón</SelectItem>
             <SelectItem value="randomLoop">Cambios aleatorios</SelectItem>
           </SelectContent>
         </Select>
@@ -227,7 +242,7 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
         <div className="space-y-2">
           <div className="flex justify-between">
             <Label>Ángulo</Label>
-            <span className="text-xs text-muted-foreground">{value.animationProps.angle || 0}°</span>
+            <span className="text-xs text-muted-foreground">{(value.animationProps.angle as number) || 0}°</span>
           </div>
           <Slider
             min={0}
@@ -244,7 +259,7 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
           <div className="space-y-2">
             <div className="flex justify-between">
               <Label>Intervalo (ms)</Label>
-              <span className="text-xs text-muted-foreground">{value.animationProps.intervalMs || 2000}ms</span>
+              <span className="text-xs text-muted-foreground">{(value.animationProps.intervalMs as number) || 2000}ms</span>
             </div>
             <Slider
               min={500}
@@ -252,6 +267,70 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
               step={100}
               value={[value.animationProps.intervalMs as number || 2000]}
               onValueChange={(values) => updateAnimationProps({ intervalMs: values[0] })}
+            />
+          </div>
+        </div>
+      )}
+
+      {value.animationType === 'mouseInteraction' && (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label>Tipo de efecto</Label>
+            <Select
+              value={mouseInteractionProps.effectType as string}
+              onValueChange={(val) => updateAnimationProps({ effectType: val })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Tipo de interacción" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="attract">Atracción</SelectItem>
+                <SelectItem value="repel">Repulsión</SelectItem>
+                <SelectItem value="swirl">Remolino</SelectItem>
+                <SelectItem value="align">Alineación</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <Label>Radio de interacción</Label>
+              <span className="text-xs text-muted-foreground">{mouseInteractionProps.interactionRadius}px</span>
+            </div>
+            <Slider
+              min={50}
+              max={300}
+              step={10}
+              value={[mouseInteractionProps.interactionRadius as number || 150]}
+              onValueChange={(values) => updateAnimationProps({ interactionRadius: values[0] })}
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <Label>Intensidad del efecto</Label>
+              <span className="text-xs text-muted-foreground">{mouseInteractionProps.effectStrength}</span>
+            </div>
+            <Slider
+              min={0.1}
+              max={3}
+              step={0.1}
+              value={[mouseInteractionProps.effectStrength as number || 1.0]}
+              onValueChange={(values) => updateAnimationProps({ effectStrength: values[0] })}
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <Label>Factor de atenuación</Label>
+              <span className="text-xs text-muted-foreground">{mouseInteractionProps.falloffFactor}</span>
+            </div>
+            <Slider
+              min={0.1}
+              max={3}
+              step={0.1}
+              value={[mouseInteractionProps.falloffFactor as number || 1.0]}
+              onValueChange={(values) => updateAnimationProps({ falloffFactor: values[0] })}
             />
           </div>
         </div>

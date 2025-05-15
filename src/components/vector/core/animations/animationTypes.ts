@@ -1,4 +1,7 @@
-import { AnimatedVectorItem, VectorDimensions } from '../types';
+// Estas interfaces son requeridas para la tipificación
+// aunque el IDE pueda marcarlas como no utilizadas
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import type { VectorDimensions } from '../types';
 
 /**
  * Interfaces para las propiedades de animación
@@ -78,6 +81,22 @@ export interface RandomLoopProps {
   transitionDurationFactor?: number;
 }
 
+export interface CenterPulseProps {
+  pulseDuration?: number;
+  pulseCenter?: { x: number, y: number };
+  maxDistanceFactor?: number;
+  pulsePropagationSpeed?: number;
+  maxAngleDisplacement?: number;
+  maxLengthFactor?: number;
+  affectAngle?: boolean;
+  
+  // Nuevas propiedades para pulso continuo
+  continuousMode?: boolean;    // Activar modo continuo
+  pulseInterval?: number;      // Intervalo entre pulsos en ms (solo en modo continuo)
+  fadeOutFactor?: number;      // Qué tanto se desvanece cada pulso (0-1)
+  maxActivePulses?: number;    // Número máximo de pulsos activos simultáneamente
+}
+
 /**
  * Tipos para el estado interno de animación
  */
@@ -106,7 +125,8 @@ export type AnimationProps =
   | SeaWavesProps
   | PerlinFlowProps
   | RandomLoopProps
-  | Record<string, any>; // Fallback para compatibilidad
+  | CenterPulseProps
+  | Record<string, unknown>; // Reemplazamos any por unknown para mayor seguridad
 
 /**
  * Lista de tipos de animación disponibles
