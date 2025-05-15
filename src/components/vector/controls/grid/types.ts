@@ -1,6 +1,6 @@
 export interface GridSettings {
   rows?: number;
-  cols?: number;
+  columns?: number;
   margin?: number;
   spacing?: number;
 }

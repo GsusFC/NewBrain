@@ -1,1 +1,0 @@
-export { ManualControl } from './ManualControl';

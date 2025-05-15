@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SliderWithInput } from "../controls/VectorControlComponents";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { debounce } from 'lodash';
 
 interface LeftControlPanelProps {
@@ -19,13 +20,13 @@ interface LeftControlPanelProps {
   onExportConfig?: () => void; // Opcional por si aún no se implementa
 }
 
-export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({ 
+export const LeftControlPanel = ({ 
   currentProps, 
   onPropsChange,
   onAnimationSettingsChange, 
   onTriggerPulse, 
   onExportConfig 
-}) => {
+}: LeftControlPanelProps) => {
   const { animationType, easingFactor, timeScale, dynamicLengthEnabled, dynamicWidthEnabled, dynamicIntensity } = currentProps;
 
   // Usar useRef para almacenar currentProps.animationProps y evitar recreación de callbacks
@@ -835,8 +836,11 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
         <Separator />
 
         {/* Efectos Dinámicos Generales */}
-        <div className="space-y-4">
-          <h4 className="font-medium text-base">Efectos Dinámicos</h4>
+        <Card>
+          <CardHeader>
+            <CardTitle>Efectos Dinámicos</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
           
           <div className="space-y-2">
             <Label htmlFor="easingFactorRange">Suavizado</Label>
@@ -896,13 +900,15 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
               />
             </div>
           )}
-        </div>
-
-        <Separator />
+        </CardContent>
+        </Card>
 
         {/* Exportación */}
-        <div className="space-y-3">
-          <h4 className="font-medium text-base">Exportación</h4>
+        <Card>
+          <CardHeader>
+            <CardTitle>Exportación</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
           <Button 
             variant="outline"
             size="sm" 
@@ -914,7 +920,8 @@ export const LeftControlPanel: React.FC<LeftControlPanelProps> = ({
           <Button className="w-full" variant="outline">Descargar SVG Estático</Button>
           <Button className="w-full" variant="outline">Descargar SVG Animado (Bucle)</Button>
           <Button className="w-full" variant="outline">Grabar GIF</Button>
-        </div>
+        </CardContent>
+        </Card>
       </div>
     </ScrollArea>
   );

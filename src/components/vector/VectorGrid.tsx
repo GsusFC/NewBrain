@@ -78,7 +78,7 @@ export const VectorGrid = forwardRef<VectorGridRef, VectorGridProps>(
       // Propiedades del Grid
       gridSettings,
       vectorSettings,
-      backgroundColor = 'bg-background',
+      backgroundColor = 'rgb(var(--background))',
 
       // Propiedades de la animación
       animationType,

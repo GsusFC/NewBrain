@@ -198,9 +198,13 @@ export function SelectControl({
         <SelectTrigger id={`select-${label}`} className="w-full h-8 text-xs">
           <SelectValue placeholder={`Seleccionar ${label}`} />
         </SelectTrigger>
-        <SelectContent className="text-xs">
+        <SelectContent className="bg-popover/95 backdrop-blur supports-[backdrop-filter]:bg-popover/85">
           {options.map((option) => (
-            <SelectItem key={option.value} value={option.value} className="text-xs">
+            <SelectItem 
+              key={option.value} 
+              value={option.value}
+              className="bg-transparent hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+            >
               {option.label}
             </SelectItem>
           ))}

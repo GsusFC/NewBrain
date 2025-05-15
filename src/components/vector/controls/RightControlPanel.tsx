@@ -13,8 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SliderWithInput } from '@/components/ui/slider-with-input';
-import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea'; // Para userSvgString
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GridControls } from './grid/GridControls';
 
 // Definiciones de tipos específicos para callbacks
@@ -86,29 +86,36 @@ export function RightControlPanel({
     <ScrollArea className="h-full">
       <div className="p-4 space-y-6">
         {/* Componente de configuración del Grid */}
-        <GridControls 
-          currentProps={{
-            gridSettings: currentProps.gridSettings,
-            aspectRatio: currentProps.aspectRatio,
-            customAspectRatio: currentProps.customAspectRatio,
-            backgroundColor: currentProps.backgroundColor
-          }}
-          onPropsChange={(props) => {
-            onPropsChange(props);
-            // Si existe onGridSettingsChange y hay cambios en gridSettings, llamarlo también
-            if (onGridSettingsChange && props.gridSettings) {
-              onGridSettingsChange(props.gridSettings);
-            }
-          }}
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle>Configuración del Grid</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <GridControls 
+              currentProps={{
+                gridSettings: currentProps.gridSettings,
+                aspectRatio: currentProps.aspectRatio,
+                customAspectRatio: currentProps.customAspectRatio,
+                backgroundColor: currentProps.backgroundColor
+              }}
+              onPropsChange={(props) => {
+                onPropsChange(props);
+                // Si existe onGridSettingsChange y hay cambios en gridSettings, llamarlo también
+                if (onGridSettingsChange && props.gridSettings) {
+                  onGridSettingsChange(props.gridSettings);
+                }
+              }}
+            />
+          </CardContent>
+        </Card>
         
-        <Separator className="my-6" />
-        
-        <h3 className="text-xl font-semibold tracking-tight text-center">Configuración de Vectores</h3>
-        <Separator className="mb-4" />
-        
-        <div className="space-y-4">
-          <div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Configuración de Vectores</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
             <Label htmlFor="vectorShapeSelect">Forma del Vector</Label>
             <Select 
               value={vectorShape as string} 
@@ -232,8 +239,10 @@ export function RightControlPanel({
                 <SelectItem value="end">Final</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-        </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </ScrollArea>
   );

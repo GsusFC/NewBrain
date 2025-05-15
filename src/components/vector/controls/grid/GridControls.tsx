@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { GridControlSelector } from './GridControlSelector';
+import { GridControlSelector } from './index';
 import { AspectRatioOption, CustomAspectRatio, GridSettings } from './types';
 
 interface GridControlsProps {
