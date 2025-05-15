@@ -34,14 +34,20 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
   const [vortexProps, setVortexProps] = useState<VortexProps>({
     strength: 0.05,
     radiusFalloff: 2,
-    swirlDirection: 'clockwise'
+    swirlDirection: 'clockwise',
+    vortexCenterX: 0.5, // Centro horizontal (proporción del ancho del canvas)
+    vortexCenterY: 0.5  // Centro vertical (proporción del alto del canvas)
   });
   
   const [flockingProps, setFlockingProps] = useState<FlockingProps>({
     perceptionRadius: 100,
     separationForce: 1.5,
     alignmentForce: 1.0,
-    cohesionForce: 0.8
+    cohesionForce: 0.8,
+    maxSpeed: 2.0,
+    targetSeekingForce: 0.5,
+    targetX: 0.5, // Posición objetivo X (proporción del ancho del canvas)
+    targetY: 0.5  // Posición objetivo Y (proporción del alto del canvas)
   });
   
   // Añadir estado para propiedades de interacción con el ratón
@@ -114,13 +120,16 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">Sin animación</SelectItem>
-            <SelectItem value="staticAngle">Ángulo estático</SelectItem>
             <SelectItem value="smoothWaves">Ondas suaves</SelectItem>
+            <SelectItem value="seaWaves">Ondas marinas</SelectItem>
             <SelectItem value="directionalFlow">Flujo direccional</SelectItem>
             <SelectItem value="vortex">Vórtice</SelectItem>
             <SelectItem value="flocking">Comportamiento de bandada</SelectItem>
             <SelectItem value="mouseInteraction">Interacción con el ratón</SelectItem>
+            <SelectItem value="perlinFlow">Flujo Perlin</SelectItem>
             <SelectItem value="randomLoop">Cambios aleatorios</SelectItem>
+            <SelectItem value="lissajous">Curvas Lissajous</SelectItem>
+            <SelectItem value="centerPulse">Pulso central</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -238,21 +247,7 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
         </div>
       )}
 
-      {value.animationType === 'staticAngle' && (
-        <div className="space-y-2">
-          <div className="flex justify-between">
-            <Label>Ángulo</Label>
-            <span className="text-xs text-muted-foreground">{(value.animationProps.angle as number) || 0}°</span>
-          </div>
-          <Slider
-            min={0}
-            max={360}
-            step={5}
-            value={[value.animationProps.angle as number || 0]}
-            onValueChange={(values) => updateAnimationProps({ angle: values[0] })}
-          />
-        </div>
-      )}
+      {/* Se eliminó el control para staticAngle ya que no es un tipo válido en el sistema modular */}
 
       {value.animationType === 'randomLoop' && (
         <div className="space-y-3">
@@ -267,6 +262,20 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
               step={100}
               value={[value.animationProps.intervalMs as number || 2000]}
               onValueChange={(values) => updateAnimationProps({ intervalMs: values[0] })}
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <Label>Duración de transición</Label>
+              <span className="text-xs text-muted-foreground">{(value.animationProps.transitionDurationFactor as number) || 0.5}</span>
+            </div>
+            <Slider
+              min={0.1}
+              max={0.9}
+              step={0.05}
+              value={[value.animationProps.transitionDurationFactor as number || 0.5]}
+              onValueChange={(values) => updateAnimationProps({ transitionDurationFactor: values[0] })}
             />
           </div>
         </div>

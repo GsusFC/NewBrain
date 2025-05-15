@@ -4,17 +4,14 @@
 import React from 'react';
 import type { VectorGridProps, GridSettings, VectorSettings } from '../core/types';
 
-// Tipos locales para elementos que no estén exportados desde core/types
-type VectorShape = 'arrow' | 'triangle' | 'circle' | 'semicircle' | 'curve' | 'rectangle' | 'plus' | 'userSvg';
-type RotationOrigin = 'start' | 'center' | 'end';
-type StrokeLinecap = 'butt' | 'round' | 'square';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Label } from '@/components/ui/label';
+import { Label } from "@/components/ui/label";
+import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ButtonGroup } from "@/components/ui/button-group";
 import { SliderWithInput } from '@/components/ui/slider-with-input';
 import { Textarea } from '@/components/ui/textarea'; // Para userSvgString
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { GridControls } from './grid/GridControls';
 
 // Definiciones de tipos específicos para callbacks
@@ -83,166 +80,146 @@ export function RightControlPanel({
   } = vectorSettings;
 
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea className="h-full w-full">
       <div className="p-4 space-y-6">
-        {/* Componente de configuración del Grid */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuración del Grid</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <GridControls 
-              currentProps={{
-                gridSettings: currentProps.gridSettings,
-                aspectRatio: currentProps.aspectRatio,
-                customAspectRatio: currentProps.customAspectRatio,
-                backgroundColor: currentProps.backgroundColor
-              }}
-              onPropsChange={(props) => {
-                onPropsChange(props);
-                // Si existe onGridSettingsChange y hay cambios en gridSettings, llamarlo también
-                if (onGridSettingsChange && props.gridSettings) {
-                  onGridSettingsChange(props.gridSettings);
-                }
-              }}
-            />
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuración de Vectores</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-            <Label htmlFor="vectorShapeSelect">Forma del Vector</Label>
-            <Select 
-              value={vectorShape as string} 
-              onValueChange={(value) => handleVectorChange('vectorShape', value as VectorShape, onVectorSettingsChange, onPropsChange)}
-            >
-              <SelectTrigger id="vectorShapeSelect">
-                <SelectValue placeholder="Selecciona forma" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="line">Línea</SelectItem>
-                <SelectItem value="arrow">Flecha</SelectItem>
-                <SelectItem value="dot">Punto</SelectItem>
-                <SelectItem value="triangle">Triángulo</SelectItem>
-                <SelectItem value="semicircle">Semicírculo</SelectItem>
-                <SelectItem value="curve">Curva</SelectItem>
-                <SelectItem value="rectangle">Rectángulo</SelectItem>
-                <SelectItem value="plus">Cruz</SelectItem>
-                <SelectItem value="userSvg">SVG Usuario</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <h3 className="text-xl font-semibold tracking-tight text-center">Configuración del Grid</h3>
+        <Separator />
+        <div className="space-y-6">
+          <GridControls 
+            currentProps={{
+              gridSettings: currentProps.gridSettings,
+              aspectRatio: currentProps.aspectRatio,
+              customAspectRatio: currentProps.customAspectRatio,
+              backgroundColor: currentProps.backgroundColor
+            }}
+            onPropsChange={(props) => {
+              onPropsChange(props);
+              // Si existe onGridSettingsChange y hay cambios en gridSettings, llamarlo también
+              if (onGridSettingsChange && props.gridSettings) {
+                onGridSettingsChange(props.gridSettings);
+              }
+            }}
+          />
+        </div>
 
-          {vectorShape === 'userSvg' && (
-            <div className="p-3 border rounded-md space-y-2 mt-2 border-slate-700">
-              <Label htmlFor="userSvgInput">Código SVG del Usuario</Label>
-              <Textarea 
-                id="userSvgInput" 
-                value={userSvg || ''} 
-                onChange={e => onGridSettingsChange?.({
-                  userSvg: e.target.value
-                })} 
-                placeholder="<svg viewBox='0 0 10 10'><path d='...' fill='currentColor'/></svg>" 
-                rows={5}
+        <Separator />
+        <div className="space-y-6">
+          <h3 className="text-xl font-semibold tracking-tight text-center">Configuración de Vectores</h3>
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <Label className="font-medium text-xs">Forma del Vector</Label>
+              <ButtonGroup
+                value={vectorShape}
+                onChange={(value) => handleVectorChange('vectorShape', value, onVectorSettingsChange, onPropsChange)}
+                options={[
+                  { value: 'arrow', label: 'Flecha' },
+                  { value: 'line', label: 'Línea' },
+                  { value: 'dot', label: 'Punto' },
+                  { value: 'triangle', label: 'Triángulo' },
+                  { value: 'circle', label: 'Círculo' },
+                  { value: 'semicircle', label: 'Semicírculo' },
+                  { value: 'curve', label: 'Curva' },
+                  { value: 'rectangle', label: 'Rectángulo' },
+                  { value: 'plus', label: 'Cruz' },
+                  { value: 'userSvg', label: 'SVG' }
+                ]}
+                size="sm"
               />
             </div>
-          )}
 
-          <div>
-            <Label htmlFor="vecLenSlider">Longitud (px)</Label>
-            <SliderWithInput 
-              id="vecLenSlider" 
-              value={[typeof vectorLength === 'number' ? vectorLength : 30]} 
-              max={600} 
-              min={1} 
-              step={1} 
-              precision={0} 
-              onValueChange={(val) => handleVectorSliderChange('vectorLength', val, onVectorSettingsChange, onPropsChange)} 
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="vecColorInput">Color del Vector</Label>
-            <div className="flex items-center gap-2 mt-1">
-              <Input 
-                id="vecColorPicker" 
-                type="color" 
-                value={typeof vectorColor === 'string' ? vectorColor : '#ffffff'} 
-                onChange={(e) => handleVectorChange('vectorColor', e.target.value, onVectorSettingsChange, onPropsChange)} 
-                className="h-10 w-12 p-1" 
-                disabled={typeof vectorColor !== 'string'}
-              />
-              <Input 
-                id="vecColorText" 
-                type="text" 
-                value={typeof vectorColor === 'string' ? vectorColor : '(Complejo)'} 
-                onChange={(e) => handleVectorChange('vectorColor', e.target.value, onVectorSettingsChange, onPropsChange)} 
-                placeholder="#ffffff" 
-                className="flex-1" 
-                disabled={typeof vectorColor !== 'string'}
-              />
-            </div>
-            {typeof vectorColor !== 'string' && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Color definido por función o gradiente.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <Label htmlFor="vecWidthSlider">Grosor (px)</Label>
-            <SliderWithInput 
-              id="vecWidthSlider" 
-              value={[typeof vectorWidth === 'number' ? vectorWidth : 2]} 
-              max={50} 
-              min={0.1} 
-              step={0.1} 
-              precision={1} 
-              onValueChange={(val) => handleVectorSliderChange('vectorWidth', val, onVectorSettingsChange, onPropsChange)} 
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="strokeLinecapSelect">Extremo de Línea</Label>
-            <Select 
-              value={strokeLinecap} 
-              onValueChange={(value) => handleVectorChange('strokeLinecap', value as StrokeLinecap, onVectorSettingsChange, onPropsChange)}
-            >
-              <SelectTrigger id="strokeLinecapSelect">
-                <SelectValue placeholder="Selecciona extremo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="butt">Butt</SelectItem>
-                <SelectItem value="round">Round</SelectItem>
-                <SelectItem value="square">Square</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="rotationOriginSelect">Origen de Rotación</Label>
-            <Select 
-              value={rotationOrigin} 
-              onValueChange={(value) => handleVectorChange('rotationOrigin', value as RotationOrigin, onVectorSettingsChange, onPropsChange)}
-            >
-              <SelectTrigger id="rotationOriginSelect">
-                <SelectValue placeholder="Selecciona origen" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="start">Inicio</SelectItem>
-                <SelectItem value="center">Centro</SelectItem>
-                <SelectItem value="end">Final</SelectItem>
-              </SelectContent>
-            </Select>
+            {vectorShape === 'userSvg' && (
+              <div className="p-3 border rounded-md space-y-2 mt-2 border-border">
+                <Label>Código SVG del Usuario</Label>
+                <Textarea 
+                  value={userSvg || ''} 
+                  onChange={e => onGridSettingsChange?.({
+                    userSvg: e.target.value
+                  })} 
+                  placeholder="<svg viewBox='0 0 10 10'><path d='...' fill='currentColor'/></svg>" 
+                  rows={5}
+                />
               </div>
+            )}
+
+            <div className="space-y-3">
+              <Label className="font-medium text-xs">Longitud (px)</Label>
+              <SliderWithInput 
+                value={[typeof vectorLength === 'number' ? vectorLength : 30]} 
+                max={600} 
+                min={1} 
+                step={1} 
+                precision={0} 
+                onValueChange={(val) => handleVectorSliderChange('vectorLength', val, onVectorSettingsChange, onPropsChange)} 
+              />
             </div>
-          </CardContent>
-        </Card>
+            
+            <div className="space-y-3">
+              <Label className="font-medium text-xs">Color del Vector</Label>
+              <div className="flex items-center gap-2">
+                <Input 
+                  type="color" 
+                  value={typeof vectorColor === 'string' ? vectorColor : '#ffffff'} 
+                  onChange={(e) => handleVectorChange('vectorColor', e.target.value, onVectorSettingsChange, onPropsChange)} 
+                  className="h-10 w-12 p-1" 
+                  disabled={typeof vectorColor !== 'string'}
+                />
+                <Input 
+                  type="text" 
+                  value={typeof vectorColor === 'string' ? vectorColor : '(Complejo)'} 
+                  onChange={(e) => handleVectorChange('vectorColor', e.target.value, onVectorSettingsChange, onPropsChange)} 
+                  placeholder="#ffffff" 
+                  className="flex-1" 
+                  disabled={typeof vectorColor !== 'string'}
+                />
+              </div>
+              {typeof vectorColor !== 'string' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Color definido por función o gradiente.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <Label className="font-medium text-xs">Grosor (px)</Label>
+              <SliderWithInput 
+                value={[typeof vectorWidth === 'number' ? vectorWidth : 2]} 
+                max={50} 
+                min={0.1} 
+                step={0.1} 
+                precision={1} 
+                onValueChange={(val) => handleVectorSliderChange('vectorWidth', val, onVectorSettingsChange, onPropsChange)} 
+              />
+            </div>
+            
+            <div className="space-y-3">
+              <Label className="font-medium text-xs">Extremo de Línea</Label>
+              <ButtonGroup
+                value={strokeLinecap}
+                onChange={(value) => handleVectorChange('strokeLinecap', value, onVectorSettingsChange, onPropsChange)}
+                options={[
+                  { value: 'butt', label: 'Plano' },
+                  { value: 'round', label: 'Redondo' },
+                  { value: 'square', label: 'Cuadrado' }
+                ]}
+                size="sm"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <Label className="font-medium text-xs">Origen de Rotación</Label>
+              <ButtonGroup
+                value={rotationOrigin}
+                onChange={(value) => handleVectorChange('rotationOrigin', value, onVectorSettingsChange, onPropsChange)}
+                options={[
+                  { value: 'start', label: 'Inicio' },
+                  { value: 'center', label: 'Centro' },
+                  { value: 'end', label: 'Final' }
+                ]}
+                size="sm"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </ScrollArea>
   );

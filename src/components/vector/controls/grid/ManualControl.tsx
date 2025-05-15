@@ -6,13 +6,13 @@ import { GridSettings } from './types';
 
 interface ManualControlProps {
   initialSettings: GridSettings;
-  backgroundColor?: string;
+  _backgroundColor?: string;
   onChange: (settings: GridSettings) => void;
 }
 
 export const ManualControl: React.FC<ManualControlProps> = ({
   initialSettings,
-  backgroundColor,
+  _backgroundColor,
   onChange
 }) => {
   return (
@@ -29,8 +29,8 @@ export const ManualControl: React.FC<ManualControlProps> = ({
 
       <SliderWithLabel
         label="Columnas"
-        value={[initialSettings.columns || 1]}
-        onValueChange={(values) => onChange({ ...initialSettings, columns: values[0] })}
+        value={[initialSettings.cols || 1]}
+        onValueChange={(values) => onChange({ ...initialSettings, cols: values[0] })}
         min={1}
         max={50}
         step={1}

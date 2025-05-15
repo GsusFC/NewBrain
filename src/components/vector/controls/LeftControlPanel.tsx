@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SliderWithInput } from "../controls/VectorControlComponents";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { debounce } from 'lodash';
 
 interface LeftControlPanelProps {
@@ -39,7 +39,10 @@ export const LeftControlPanel = ({
   const [localAnimationProps, setLocalAnimationProps] = useState(currentProps.animationProps || {});
 
   // Memorizar estos callbacks con dependencias mínimas para evitar recreaciones
-  const handleAnimationPropChange = useCallback((propName: keyof AnimationProps, value: number) => {
+  const handleAnimationPropChange = useCallback(<T extends keyof AnimationProps>(
+    propName: T, 
+    value: AnimationProps[T]
+  ) => {
     const newAnimationProps = {
       ...animationPropsRef.current,
       [propName]: value,
@@ -83,23 +86,36 @@ export const LeftControlPanel = ({
         };
         break;
         
-      case 'tangenteClasica':
+      case 'randomLoop':
         defaultProps = {
-          frequency: 0.0005,
-          amplitude: 30,
-          baseAngle: 0,
-          spatialScale: 0.01,
-          curvature: 0.5
+          intervalMs: 2000,
+          transitionDurationFactor: 0.5
         };
         break;
         
-      case 'geometricPattern':
+      // Reemplazamos 'tangenteClasica' por 'smoothWaves' que es compatible con el sistema modular
+      case 'smoothWaves':
         defaultProps = {
-          pattern: 'spiral',
-          rotationSpeed: 0.0001,
-          intensity: 1.0,
-          centerX: undefined,
-          centerY: undefined
+          waveFrequency: 0.0005,
+          waveAmplitude: 30,
+          baseAngle: 0,
+          patternScale: 0.01,
+          timeScale: 1.0,
+          waveType: 'circular',
+          centerX: 0.5,
+          centerY: 0.5
+        };
+        break;
+        
+      // Reemplazamos 'geometricPattern' por 'lissajous' que es compatible con el sistema modular
+      case 'lissajous':
+        defaultProps = {
+          xFrequency: 1.0,
+          yFrequency: 2.0,
+          xAmplitude: 1.0,
+          yAmplitude: 1.0,
+          phaseOffset: Math.PI / 2,
+          timeSpeed: 0.5
         };
         break;
         
@@ -146,7 +162,18 @@ export const LeftControlPanel = ({
   }, [onAnimationSettingsChange]);
 
   const debouncedAnimationPropChange = useMemo(
-    () => debounce(handleAnimationPropChange, 200), 
+    () => debounce(
+      <T extends keyof AnimationProps>(
+        propName: T, 
+        value: AnimationProps[T]
+      ) => {
+        handleAnimationPropChange(propName, value);
+      },
+      200
+    ) as <T extends keyof AnimationProps>(
+      propName: T, 
+      value: AnimationProps[T]
+    ) => void, 
     [handleAnimationPropChange]
   );
 
@@ -154,14 +181,14 @@ export const LeftControlPanel = ({
   const waveAmplitude = localAnimationProps.waveAmplitude ?? currentProps.animationProps?.waveAmplitude ?? 30;
 
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea className="relative overflow-hidden h-full overflow-y-auto">
       <div className="p-4 space-y-6">
         <h3 className="text-xl font-semibold tracking-tight text-center">Animación y Efectos</h3>
         <Separator />
 
         {/* Tipo de Animación */}
         <div className="space-y-4">
-          <h4 className="font-medium text-base">Tipo de Animación</h4>
+          <h4 className="font-medium text-xs">Tipo de Animación</h4>
           <div className="relative">
             <select
               id="animationTypeSelect"
@@ -176,14 +203,11 @@ export const LeftControlPanel = ({
               <option value="directionalFlow">Flujo Direccional</option>
               <option value="vortex">Vórtice</option>
               <option value="flocking">Bandada</option>
-              <option value="staticAngle">Ángulo Estático</option>
               <option value="randomLoop">Bucle Aleatorio</option>
-              {/* Nuevas animaciones implementadas */}
-              <option value="lissajous">Lissajous</option>
+              <option value="lissajous">Curvas Lissajous</option>
               <option value="seaWaves">Olas Marinas</option>
               <option value="perlinFlow">Flujo Perlin</option>
-              <option value="tangenteClasica">Tangente Clásica</option>
-              <option value="geometricPattern">Patrón Geométrico</option>
+              <option value="smoothWaves">Ondas Suaves</option>
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
               <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -194,16 +218,14 @@ export const LeftControlPanel = ({
         </div>
 
         {/* Parámetros de Animación - Solo se muestran cuando hay parámetros disponibles */}
-        {animationType !== 'none' && ([
-          'smoothWaves', 'centerPulse', 'mouseInteraction'
-        ].includes(animationType) || 
+        {(['smoothWaves', 'lissajous', 'seaWaves', 'perlinFlow', 'centerPulse', 'randomLoop', 'directionalFlow', 'vortex', 'flocking', 'mouseInteraction'].includes(animationType) || 
           (currentProps.animationProps && Object.keys(currentProps.animationProps).length > 0)) && (
           <div className="space-y-4">
-            <h4 className="font-medium text-base">Parámetros de Animación</h4>
+            <h4 className="font-medium text-xs">Parámetros de Animación</h4>
             
             {/* Parámetros de Olas Suaves */}
             {animationType === 'smoothWaves' && (
-              <div className="space-y-3 border border-slate-700 rounded-md p-3">
+              <div className="space-y-3 border border-border rounded-md p-3">
                 <h5 className="text-sm font-medium text-slate-300">Olas Suaves</h5>
                 <div className="space-y-2">
                   <Label htmlFor="waveFreqRange">Frecuencia</Label>
@@ -229,17 +251,88 @@ export const LeftControlPanel = ({
                     onValueChange={(val) => debouncedAnimationPropChange('waveAmplitude', val[0])}
                   />
                 </div>
-                {/* Otros parámetros de Olas Suaves */}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="waveTypeSelect">Tipo de Onda</Label>
+                  <select
+                    id="waveTypeSelect"
+                    value={typeof localAnimationProps.waveType === 'string' ? localAnimationProps.waveType : 'linear'}
+                    onChange={(e) => {
+                      // Actualizar el estado local inmediatamente para una respuesta fluida
+                      const waveType = e.target.value as 'linear' | 'circular' | 'diagonal';
+                      setLocalAnimationProps(prev => ({...prev, waveType}));
+                      // Usar debounce para la actualización real
+                      debouncedAnimationPropChange('waveType', waveType);
+                    }}
+                    className="w-full px-3 py-2 bg-card border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring appearance-none text-sm"
+                  >
+                    <option value="linear">Lineal</option>
+                    <option value="circular">Circular</option>
+                    <option value="diagonal">Diagonal</option>
+                  </select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="waveSpeedRange">Velocidad</Label>
+                  <SliderWithInput
+                    id="waveSpeedRange"
+                    min={0.1}
+                    max={5}
+                    step={0.1}
+                    precision={1}
+                    value={[typeof localAnimationProps.waveSpeed === 'number' ? localAnimationProps.waveSpeed : 1.0]} 
+                    onValueChange={(val) => debouncedAnimationPropChange('waveSpeed', val[0])}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="timeScaleRange">Escala de Tiempo</Label>
+                  <SliderWithInput
+                    id="timeScaleRange"
+                    min={0.1}
+                    max={3}
+                    step={0.1}
+                    precision={1}
+                    value={[timeScale]} 
+                    onValueChange={(val) => onAnimationSettingsChange({ timeScale: val[0] })}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="baseAngleRange">Ángulo Base (grados)</Label>
+                  <SliderWithInput
+                    id="baseAngleRange"
+                    min={-180}
+                    max={180}
+                    step={1}
+                    precision={0}
+                    value={[localAnimationProps.baseAngle || 0]} 
+                    onValueChange={(val) => debouncedAnimationPropChange('baseAngle', val[0])}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="patternScaleRange">Escala del Patrón</Label>
+                  <SliderWithInput
+                    id="patternScaleRange"
+                    min={0.001}
+                    max={0.1}
+                    step={0.001}
+                    precision={3}
+                    value={[typeof localAnimationProps.patternScale === 'number' ? localAnimationProps.patternScale : 0.01]} 
+                    onValueChange={(val) => debouncedAnimationPropChange('patternScale', val[0])}
+                  />
+                </div>
               </div>
             )}
             
             {/* Parámetros de Pulso Central */}
             {animationType === 'centerPulse' && (
-              <div className="space-y-3 border border-slate-700 rounded-md p-3">
+              <div className="space-y-3 border border-border rounded-md p-3">
                 <h5 className="text-sm font-medium text-slate-300">Pulso Central</h5>
                 <Button 
                   onClick={onTriggerPulse} 
-                  className="w-full bg-sky-500 hover:bg-sky-600 text-white"
+                  className="w-full bg-card border-border hover:bg-accent hover:text-accent-foreground"
                 >
                   Disparar Pulso
                 </Button>
@@ -450,7 +543,7 @@ export const LeftControlPanel = ({
                   <Label htmlFor="effectType">Tipo de efecto</Label>
                   <select
                     id="effectType"
-                    className="w-full p-2 bg-slate-800 border border-slate-700 rounded-md text-white"
+                    className="w-full p-2 bg-slate-800 border border-border rounded-md text-white"
                     value={(currentProps.animationProps?.effectType as string | undefined) ?? 'attract'}
                     onChange={(e) => onAnimationSettingsChange({ 
                       animationProps: {
@@ -710,122 +803,196 @@ export const LeftControlPanel = ({
               </div>
             )}
             
-            {/* CONTROLES PARA TANGENTE CLÁSICA */}
-            {animationType === 'tangenteClasica' && (
+            {/* CONTROLES PARA ONDAS SUAVES */}
+            {animationType === 'smoothWaves' && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="frequency">Frecuencia</Label>
+                  <Label htmlFor="waveFrequency">Frecuencia</Label>
                   <SliderWithInput 
-                    id="frequency" 
-                    value={[currentProps.animationProps?.frequency as number || 0.0005]} 
+                    id="waveFrequency" 
+                    value={[currentProps.animationProps?.waveFrequency as number || 0.0005]} 
                     min={0.0001} 
                     max={0.001} 
                     step={0.0001} 
                     precision={5}
-                    onValueChange={(val) => debouncedAnimationPropChange('frequency', val[0])} 
+                    onValueChange={(val) => debouncedAnimationPropChange('waveFrequency', val[0])} 
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="amplitude">Amplitud</Label>
+                  <Label htmlFor="waveAmplitude">Amplitud</Label>
                   <SliderWithInput 
-                    id="amplitude" 
-                    value={[currentProps.animationProps?.amplitude as number || 30]} 
-                    min={5} 
-                    max={90} 
-                    step={1} 
-                    precision={0}
-                    onValueChange={(val) => debouncedAnimationPropChange('amplitude', val[0])} 
+                    id="waveAmplitude" 
+                    value={[currentProps.animationProps?.waveAmplitude as number || 30]} 
+                    min={0} 
+                    max={100} 
+                    step={1}
+                    onValueChange={(val) => debouncedAnimationPropChange('waveAmplitude', val[0])} 
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="baseAngle">Ángulo base</Label>
+                  <Label htmlFor="baseAngle">Ángulo Base</Label>
                   <SliderWithInput 
                     id="baseAngle" 
                     value={[currentProps.animationProps?.baseAngle as number || 0]} 
                     min={0} 
                     max={360} 
-                    step={1} 
-                    precision={0}
+                    step={1}
                     onValueChange={(val) => debouncedAnimationPropChange('baseAngle', val[0])} 
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="spatialScale">Escala espacial</Label>
+                  <Label htmlFor="patternScale">Escala del Patrón</Label>
                   <SliderWithInput 
-                    id="spatialScale" 
-                    value={[currentProps.animationProps?.spatialScale as number || 0.01]} 
+                    id="patternScale" 
+                    value={[currentProps.animationProps?.patternScale as number || 0.01]} 
                     min={0.001} 
-                    max={0.1} 
-                    step={0.001} 
+                    max={0.05} 
+                    step={0.001}
                     precision={3}
-                    onValueChange={(val) => debouncedAnimationPropChange('spatialScale', val[0])} 
+                    onValueChange={(val) => debouncedAnimationPropChange('patternScale', val[0])} 
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="curvature">Curvatura</Label>
+                  <Label htmlFor="timeScale">Velocidad</Label>
                   <SliderWithInput 
-                    id="curvature" 
-                    value={[currentProps.animationProps?.curvature as number || 0.5]} 
+                    id="timeScale" 
+                    value={[currentProps.animationProps?.timeScale as number || 1.0]} 
+                    min={0.1} 
+                    max={3} 
+                    step={0.1}
+                    precision={1}
+                    onValueChange={(val) => debouncedAnimationPropChange('timeScale', val[0])} 
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="waveType">Tipo de Onda</Label>
+                  <select
+                    id="waveType"
+                    className="w-full p-2 rounded bg-slate-700 border border-slate-600"
+                    value={currentProps.animationProps?.waveType as string || 'circular'}
+                    onChange={(e) => debouncedAnimationPropChange('waveType', e.target.value)}
+                  >
+                    <option value="linear">Lineal</option>
+                    <option value="circular">Circular</option>
+                  </select>
+                </div>
+              </div>
+            )}
+            
+            {/* CONTROLES PARA CURVAS LISSAJOUS */}
+            {animationType === 'lissajous' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="xFrequency">Frecuencia X</Label>
+                  <SliderWithInput 
+                    id="xFrequency" 
+                    value={[currentProps.animationProps?.xFrequency as number || 1.0]} 
+                    min={0.1} 
+                    max={5.0} 
+                    step={0.1} 
+                    precision={1}
+                    onValueChange={(val) => debouncedAnimationPropChange('xFrequency', val[0])} 
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="yFrequency">Frecuencia Y</Label>
+                  <SliderWithInput 
+                    id="yFrequency" 
+                    value={[currentProps.animationProps?.yFrequency as number || 2.0]} 
+                    min={0.1} 
+                    max={5.0} 
+                    step={0.1} 
+                    precision={1}
+                    onValueChange={(val) => debouncedAnimationPropChange('yFrequency', val[0])} 
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="xAmplitude">Amplitud X</Label>
+                  <SliderWithInput 
+                    id="xAmplitude" 
+                    value={[currentProps.animationProps?.xAmplitude as number || 1.0]} 
                     min={0.1} 
                     max={2.0} 
                     step={0.1} 
                     precision={1}
-                    onValueChange={(val) => debouncedAnimationPropChange('curvature', val[0])} 
+                    onValueChange={(val) => debouncedAnimationPropChange('xAmplitude', val[0])} 
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="yAmplitude">Amplitud Y</Label>
+                  <SliderWithInput 
+                    id="yAmplitude" 
+                    value={[currentProps.animationProps?.yAmplitude as number || 1.0]} 
+                    min={0.1} 
+                    max={2.0} 
+                    step={0.1} 
+                    precision={1}
+                    onValueChange={(val) => debouncedAnimationPropChange('yAmplitude', val[0])} 
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="phaseOffset">Desfase</Label>
+                  <SliderWithInput 
+                    id="phaseOffset" 
+                    value={[currentProps.animationProps?.phaseOffset as number || (Math.PI / 2)]} 
+                    min={0} 
+                    max={Math.PI * 2} 
+                    step={0.1} 
+                    precision={1}
+                    onValueChange={(val) => debouncedAnimationPropChange('phaseOffset', val[0])} 
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="timeSpeed">Velocidad</Label>
+                  <SliderWithInput 
+                    id="timeSpeed" 
+                    value={[currentProps.animationProps?.timeSpeed as number || 0.5]} 
+                    min={0} 
+                    max={2.0} 
+                    step={0.1} 
+                    precision={1}
+                    onValueChange={(val) => debouncedAnimationPropChange('timeSpeed', val[0])} 
                   />
                 </div>
               </div>
             )}
             
-            {/* CONTROLES PARA PATRÓN GEOMÉTRICO */}
-            {animationType === 'geometricPattern' && (
+            {/* CONTROLES PARA BUCLE ALEATORIO */}
+            {animationType === 'randomLoop' && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="pattern">Tipo de patrón</Label>
-                  <select
-                    id="pattern"
-                    className="w-full p-2 bg-slate-800 border border-slate-700 rounded-md text-white"
-                    value={(currentProps.animationProps?.pattern as string) || 'spiral'}
-                    onChange={(e) => onAnimationSettingsChange({ 
-                      animationProps: {
-                        ...currentProps.animationProps,
-                        pattern: e.target.value
-                      }
-                    })}
-                  >
-                    <option value="spiral">Espiral</option>
-                    <option value="concentric">Concéntrico</option>
-                    <option value="radial">Radial</option>
-                    <option value="grid">Cuadrícula</option>
-                  </select>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="rotationSpeed">Velocidad de rotación</Label>
+                  <Label htmlFor="intervalMs">Intervalo (ms)</Label>
                   <SliderWithInput 
-                    id="rotationSpeed" 
-                    value={[currentProps.animationProps?.rotationSpeed as number || 0.0001]} 
-                    min={0.00001} 
-                    max={0.001} 
-                    step={0.00001} 
-                    precision={6}
-                    onValueChange={(val) => debouncedAnimationPropChange('rotationSpeed', val[0])} 
+                    id="intervalMs" 
+                    value={[currentProps.animationProps?.intervalMs as number || 2000]} 
+                    min={500} 
+                    max={5000} 
+                    step={100}
+                    precision={0}
+                    onValueChange={(val) => debouncedAnimationPropChange('intervalMs', val[0])} 
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="intensity">Intensidad</Label>
+                  <Label htmlFor="transitionDurationFactor">Duración de Transición</Label>
                   <SliderWithInput 
-                    id="intensity" 
-                    value={[currentProps.animationProps?.intensity as number || 1.0]} 
+                    id="transitionDurationFactor" 
+                    value={[currentProps.animationProps?.transitionDurationFactor as number || 0.5]} 
                     min={0.1} 
-                    max={5.0} 
-                    step={0.1} 
-                    precision={1}
-                    onValueChange={(val) => debouncedAnimationPropChange('intensity', val[0])} 
+                    max={0.9} 
+                    step={0.05}
+                    precision={2}
+                    onValueChange={(val) => debouncedAnimationPropChange('transitionDurationFactor', val[0])} 
                   />
                 </div>
               </div>
@@ -836,14 +1003,11 @@ export const LeftControlPanel = ({
         <Separator />
 
         {/* Efectos Dinámicos Generales */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Efectos Dinámicos</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="space-y-4">
+          <h3 className="text-xl font-semibold tracking-tight text-center">Efectos Dinámicos</h3>
           
           <div className="space-y-2">
-            <Label htmlFor="easingFactorRange">Suavizado</Label>
+            <Label htmlFor="easingFactorRange" className="text-xs font-medium">Suavizado</Label>
             <SliderWithInput 
               id="easingFactorRange" 
               defaultValue={[easingFactor || 0.1]} 
@@ -856,7 +1020,7 @@ export const LeftControlPanel = ({
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="timeScaleRange">Escala de Tiempo</Label>
+            <Label htmlFor="timeScaleRange" className="text-xs font-medium">Escala de Tiempo</Label>
             <SliderWithInput 
               id="timeScaleRange" 
               defaultValue={[timeScale || 1.0]} 
@@ -874,7 +1038,7 @@ export const LeftControlPanel = ({
               checked={dynamicLengthEnabled} 
               onCheckedChange={c => onAnimationSettingsChange({ dynamicLengthEnabled: !!c })} 
             />
-            <Label htmlFor="dynLen">Longitud Dinámica</Label>
+            <Label htmlFor="dynLen" className="text-xs font-medium">Longitud Dinámica</Label>
           </div>
           
           <div className="flex items-center space-x-2">
@@ -883,12 +1047,12 @@ export const LeftControlPanel = ({
               checked={dynamicWidthEnabled} 
               onCheckedChange={c => onAnimationSettingsChange({ dynamicWidthEnabled: !!c })} 
             />
-            <Label htmlFor="dynWid">Grosor Dinámico</Label>
+            <Label htmlFor="dynWid" className="text-xs font-medium">Grosor Dinámico</Label>
           </div>
           
           {(dynamicLengthEnabled || dynamicWidthEnabled) && (
             <div className="space-y-2 mt-2">
-              <Label htmlFor="dynInt">Intensidad Dinámica</Label>
+              <Label htmlFor="dynInt" className="text-xs font-medium">Intensidad Dinámica</Label>
               <SliderWithInput 
                 id="dynInt" 
                 defaultValue={[dynamicIntensity || 1.0]} 
@@ -900,28 +1064,27 @@ export const LeftControlPanel = ({
               />
             </div>
           )}
-        </CardContent>
-        </Card>
+        </div>
+
+        <Separator />
 
         {/* Exportación */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Exportación</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-          <Button 
-            variant="outline"
-            size="sm" 
-            className="w-full"
-            onClick={onExportConfig} 
-          >
-            Exportar Configuración
-          </Button>
-          <Button className="w-full" variant="outline">Descargar SVG Estático</Button>
-          <Button className="w-full" variant="outline">Descargar SVG Animado (Bucle)</Button>
-          <Button className="w-full" variant="outline">Grabar GIF</Button>
-        </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <h3 className="text-xl font-semibold tracking-tight text-center">Exportación</h3>
+          <div className="space-y-3">
+            <Button 
+              variant="outline"
+              size="sm" 
+              className="w-full bg-muted"
+              onClick={onExportConfig} 
+            >
+              Exportar Configuración
+            </Button>
+            <Button className="w-full bg-muted" variant="outline">Descargar SVG Estático</Button>
+            <Button className="w-full bg-muted" variant="outline">Descargar SVG Animado (Bucle)</Button>
+            <Button className="w-full bg-muted" variant="outline">Grabar GIF</Button>
+          </div>
+        </div>
       </div>
     </ScrollArea>
   );

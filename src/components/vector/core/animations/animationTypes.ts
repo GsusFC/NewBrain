@@ -1,159 +1,194 @@
-// Estas interfaces son requeridas para la tipificación
-// aunque el IDE pueda marcarlas como no utilizadas
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { VectorDimensions } from '../types';
-
 /**
- * Interfaces para las propiedades de animación
- * Cada tipo de animación tiene su propia interfaz específica
+ * Definiciones de tipos para el sistema de animaciones
+ * Centraliza todas las interfaces y tipos utilizados en el sistema
  */
 
-export interface SmoothWavesProps {
-  waveFrequency?: number;
-  waveAmplitude?: number;
-  waveSpeed?: number;
-  baseAngle?: number;
-  patternScale?: number;
-  timeScale?: number;
-  waveType?: 'circular' | 'linear' | 'diagonal';
-  centerX?: number;
-  centerY?: number;
-}
-
-export interface MouseInteractionProps {
-  interactionRadius?: number;
-  effectType?: 'attract' | 'repel' | 'align' | 'swirl';
-  effectStrength?: number;
-  falloffFactor?: number;
-}
-
-export interface DirectionalFlowProps {
-  flowAngle?: number;
-  flowSpeed?: number;
-  turbulence?: number;
-}
-
-export interface FlockingProps {
-  perceptionRadius?: number;
-  maxSpeed?: number;
-  separationForce?: number;
-  alignmentForce?: number;
-  cohesionForce?: number;
-  targetSeekingForce?: number;
-  targetX?: number;
-  targetY?: number;
-}
-
-export interface VortexProps {
-  vortexCenterX?: number;
-  vortexCenterY?: number;
-  strength?: number;
-  radiusFalloff?: number;
-  swirlDirection?: 'clockwise' | 'counterclockwise';
-}
-
-export interface LissajousProps {
-  xFrequency?: number;
-  yFrequency?: number;
-  xAmplitude?: number;
-  yAmplitude?: number;
-  phaseOffset?: number;
-  timeSpeed?: number;
-}
-
-export interface SeaWavesProps {
-  baseFrequency?: number;
-  baseAmplitude?: number;
-  rippleFrequency?: number;
-  rippleAmplitude?: number;
-  choppiness?: number;
-  spatialFactor?: number;
-}
-
-export interface PerlinFlowProps {
-  noiseScale?: number;
-  timeEvolutionSpeed?: number;
-  angleMultiplier?: number;
-}
-
-export interface RandomLoopProps {
-  intervalMs?: number;
-  transitionDurationFactor?: number;
-}
-
-export interface CenterPulseProps {
-  pulseDuration?: number;
-  pulseCenter?: { x: number, y: number };
-  maxDistanceFactor?: number;
-  pulsePropagationSpeed?: number;
-  maxAngleDisplacement?: number;
-  maxLengthFactor?: number;
-  affectAngle?: boolean;
-  
-  // Nuevas propiedades para pulso continuo
-  continuousMode?: boolean;    // Activar modo continuo
-  pulseInterval?: number;      // Intervalo entre pulsos en ms (solo en modo continuo)
-  fadeOutFactor?: number;      // Qué tanto se desvanece cada pulso (0-1)
-  maxActivePulses?: number;    // Número máximo de pulsos activos simultáneamente
+/**
+ * Item vectorial con estado de animación
+ */
+export interface AnimatedVectorItem {
+  id: string;
+  x: number;
+  y: number;
+  angle: number;
+  length: number;
+  originalLength: number;
+  color: string;
+  originalColor: string;
+  userData?: Record<string, unknown>;
 }
 
 /**
- * Tipos para el estado interno de animación
+ * Tipos de animación soportados
  */
-export interface FlockingAnimationState {
-  velocityX: number;
-  velocityY: number;
-  lastNeighbors?: string[]; // IDs de los últimos vecinos
-}
-
-export interface RandomLoopAnimationState {
-  nextRandomTime: number;
-  targetAngle: number;
-  previousAngle?: number;
-}
-
-/**
- * Tipo unión para todas las propiedades de animación
- */
-export type AnimationProps = 
-  | SmoothWavesProps
-  | MouseInteractionProps
-  | DirectionalFlowProps
-  | FlockingProps
-  | VortexProps
-  | LissajousProps
-  | SeaWavesProps
-  | PerlinFlowProps
-  | RandomLoopProps
-  | CenterPulseProps
-  | Record<string, unknown>; // Reemplazamos any por unknown para mayor seguridad
-
-/**
- * Lista de tipos de animación disponibles
- */
-export type AnimationType = 
+export type AnimationType =
   | 'none'
-  | 'staticAngle'
-  | 'randomStatic'
-  | 'randomLoop'
   | 'smoothWaves'
-  | 'seaWaves' 
-  | 'perlinFlow'
+  | 'seaWaves'
   | 'mouseInteraction'
-  | 'centerPulse'
   | 'directionalFlow'
   | 'flocking'
-  | 'geometricPattern'
-  | 'tangenteClasica'
+  | 'vortex'
   | 'lissajous'
-  | 'vortex';
+  | 'perlinFlow'
+  | 'randomLoop'
+  | 'centerPulse';
 
 /**
- * Interfaz unificada para funciones de cálculo de ángulo
+ * Configuración global de la animación
  */
-export interface AnimationCalculation {
-  angle?: number;
-  lengthFactor?: number;
-  widthFactor?: number;
-  intensityFactor?: number;
+export interface AnimationSettings {
+  type: AnimationType;
+  baseSpeed: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  mouseX: number | null;
+  mouseY: number | null;
+  isMouseDown: boolean;
+  seed?: number;
+  colorTransition?: boolean;
+  lengthTransition?: boolean;
+  angleTransition?: boolean;
+  resetOnTypeChange?: boolean;
+  [key: string]: unknown;
 }
+
+/**
+ * Propiedades para animación de ondas suaves
+ */
+export interface SmoothWavesProps {
+  waveFrequency: number;
+  waveAmplitude: number;
+  baseAngle: number;
+  patternScale: number;
+  timeScale: number;
+  waveType: 'linear' | 'circular';
+  centerX: number;
+  centerY: number;
+}
+
+/**
+ * Propiedades para animación de ondas marinas
+ */
+export interface SeaWavesProps {
+  baseFrequency: number;
+  baseAmplitude: number;
+  rippleFrequency: number;
+  rippleAmplitude: number;
+  choppiness: number;
+  spatialFactor: number;
+}
+
+/**
+ * Propiedades para interacción con el ratón
+ */
+export interface MouseInteractionProps {
+  interactionRadius: number;
+  effectType: 'attract' | 'repel' | 'rotate';
+  effectStrength: number;
+  falloffFactor: number;
+}
+
+/**
+ * Propiedades para flujo direccional
+ */
+export interface DirectionalFlowProps {
+  flowAngle: number;
+  flowSpeed: number;
+  turbulence: number;
+}
+
+/**
+ * Propiedades para animación de comportamiento en banda (flocking)
+ */
+export interface FlockingProps {
+  perceptionRadius: number;
+  maxSpeed: number;
+  separationForce: number;
+  alignmentForce: number;
+  cohesionForce: number;
+  targetSeekingForce: number;
+  targetX: number;
+  targetY: number;
+}
+
+/**
+ * Propiedades para animación de vórtice
+ */
+export interface VortexProps {
+  vortexCenterX: number;
+  vortexCenterY: number;
+  strength: number;
+  radiusFalloff: number;
+  swirlDirection: 'clockwise' | 'counterclockwise';
+}
+
+/**
+ * Propiedades para animación de curvas Lissajous
+ */
+export interface LissajousProps {
+  xFrequency: number;
+  yFrequency: number;
+  xAmplitude: number;
+  yAmplitude: number;
+  phaseOffset: number;
+  timeSpeed: number;
+}
+
+
+
+/**
+ * Propiedades para flujo basado en ruido Perlin
+ */
+export interface PerlinFlowProps {
+  noiseScale: number;
+  timeEvolutionSpeed: number;
+  angleMultiplier: number;
+}
+
+/**
+ * Propiedades para animación de bucle aleatorio
+ */
+export interface RandomLoopProps {
+  intervalMs: number;
+  transitionDurationFactor: number;
+}
+
+/**
+ * Propiedades para animación de pulso desde el centro
+ */
+export interface CenterPulseProps {
+  pulseDuration: number;
+  pulseCenter: { x: number; y: number };
+  maxDistanceFactor: number;
+  pulsePropagationSpeed: number;
+  maxAngleDisplacement: number;
+  maxLengthFactor: number;
+  affectAngle: boolean;
+  continuousMode: boolean;
+  pulseInterval: number;
+  fadeOutFactor: number;
+  maxActivePulses?: number; // Límite de pulsos activos simultáneamente
+}
+
+
+
+
+
+
+
+/**
+ * Función de actualización para un tipo de animación
+ */
+export type UpdateFunction = (
+  item: AnimatedVectorItem,
+  currentTime: number,
+  props: unknown,
+  settings: AnimationSettings,
+  allVectors?: AnimatedVectorItem[]
+) => AnimatedVectorItem;
+
+/**
+ * Mapa de funciones de actualización por tipo de animación
+ */
+export type UpdateFunctionMap = Record<AnimationType, UpdateFunction | null>;

@@ -115,7 +115,7 @@ export function DensityModeControl({
         {/* Panel de configuración de ratio personalizado */}
         {showCustomPanel && (
           <div className={cn(
-            "custom-aspect-ratio-panel p-2 mt-2 border border-slate-700 rounded-md bg-slate-800/50 mb-4",
+            "custom-aspect-ratio-panel p-2 mt-2 border border-border rounded-md bg-slate-800/50 mb-4",
             aspectRatio !== 'custom' && "hidden"
           )}>
             <div className="grid grid-cols-2 gap-2">
@@ -194,7 +194,7 @@ export function DensityModeControl({
           <span className="text-xs font-medium text-muted-foreground w-16">
             Columnas:
           </span>
-          <div className="flex items-center h-8 px-2 bg-slate-700/50 rounded-sm border border-slate-700 text-xs text-muted-foreground">
+          <div className="flex items-center h-8 px-2 bg-slate-700/50 rounded-sm border border-border text-xs text-muted-foreground">
             <span className="font-medium">{gridSettings.cols || 0}</span>
             <span className="ml-1 text-muted-foreground">(calculadas)</span>
           </div>

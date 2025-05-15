@@ -3,7 +3,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SliderWithLabel } from '@/components/ui/slider-with-label';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { AspectRatioControl } from './AspectRatioControl';
+
 import { DensityControl } from './DensityControl';
 import { ManualControl } from './ManualControl';
 
@@ -13,7 +13,7 @@ export interface GridControlSelectorProps {
   gridSettings?: GridSettings;
   aspectRatio?: AspectRatioOption;
   customAspectRatio?: CustomAspectRatio;
-  backgroundColor?: string;
+  _backgroundColor?: string;
   onPropsChange: (props: {
     gridSettings?: GridSettings;
     aspectRatio?: AspectRatioOption;
@@ -25,26 +25,30 @@ export const GridControlSelector: React.FC<GridControlSelectorProps> = ({
   gridSettings = {},
   aspectRatio = '16:9',
   customAspectRatio,
-  backgroundColor,
+  _backgroundColor,
   onPropsChange
 }) => {
   // Estado para controlar el modo de configuración activo
-  const [activeMode, setActiveMode] = useState<'aspect-ratio' | 'density' | 'manual'>('aspect-ratio');
+  const [activeMode, setActiveMode] = useState<'aspect-ratio' | 'density' | 'manual'>(typeof window !== 'undefined' ? 'aspect-ratio' : 'manual');
   
   // Estados independientes para cada modo
-  const [aspectRatioSettings, setAspectRatioSettings] = useState<GridSettings>(gridSettings);
-  const [aspectRatioSelection, setAspectRatioSelection] = useState<AspectRatioOption>(aspectRatio);
+  const [aspectRatioSettings, setAspectRatioSettings] = useState<GridSettings>(gridSettings || {});
+  const [aspectRatioSelection, setAspectRatioSelection] = useState<AspectRatioOption>(aspectRatio || '16:9');
   const [aspectRatioCustom, setAspectRatioCustom] = useState<CustomAspectRatio>(
     customAspectRatio || { width: 16, height: 9 }
   );
   
-  const [densitySettings, setDensitySettings] = useState<GridSettings>(gridSettings);
-  const [densityRatio, setDensityRatio] = useState<AspectRatioOption>(aspectRatio);
+  const [densitySettings, setDensitySettings] = useState<GridSettings>(gridSettings || {});
+  const [densityRatio, setDensityRatio] = useState<AspectRatioOption>(aspectRatio || '16:9');
   const [densityCustomRatio, setDensityCustomRatio] = useState<CustomAspectRatio>(
     customAspectRatio || { width: 16, height: 9 }
   );
   
-  const [manualSettings, setManualSettings] = useState<GridSettings>(gridSettings);
+  const [manualSettings, setManualSettings] = useState<GridSettings>(gridSettings || {});
+  const [manualRatio, setManualRatio] = useState<AspectRatioOption>(aspectRatio || '16:9');
+  const [manualCustomRatio, setManualCustomRatio] = useState<CustomAspectRatio>(
+    customAspectRatio || { width: 16, height: 9 }
+  );
   
   // Inicializar estados cuando cambian las props
   useEffect(() => {
@@ -58,11 +62,13 @@ export const GridControlSelector: React.FC<GridControlSelectorProps> = ({
     if (aspectRatio) {
       setAspectRatioSelection(aspectRatio);
       setDensityRatio(aspectRatio);
+      setManualRatio(aspectRatio);
     }
     
     if (customAspectRatio) {
       setAspectRatioCustom(customAspectRatio);
       setDensityCustomRatio(customAspectRatio);
+      setManualCustomRatio(customAspectRatio);
     }
   }, [gridSettings, aspectRatio, customAspectRatio]);
   
@@ -147,7 +153,9 @@ export const GridControlSelector: React.FC<GridControlSelectorProps> = ({
     // Solo actualizar props globales si este modo está activo
     if (activeMode === 'manual') {
       onPropsChange({
-        gridSettings: newSettings
+        gridSettings: newSettings,
+        aspectRatio: manualRatio,
+        customAspectRatio: manualRatio === 'custom' ? manualCustomRatio : undefined
       });
     }
   };
@@ -351,7 +359,7 @@ export const GridControlSelector: React.FC<GridControlSelectorProps> = ({
 
             <DensityControl 
               initialSettings={densitySettings}
-              backgroundColor={backgroundColor}
+              _backgroundColor={_backgroundColor}
               onChange={handleDensitySettingsChange}
             />
           </div>
@@ -359,7 +367,7 @@ export const GridControlSelector: React.FC<GridControlSelectorProps> = ({
           <div className={activeMode !== 'manual' ? 'hidden' : 'space-y-6'}>
             <ManualControl 
               initialSettings={manualSettings}
-              backgroundColor={backgroundColor}
+              _backgroundColor={_backgroundColor}
               onChange={handleManualSettingsChange}
             />
           </div>

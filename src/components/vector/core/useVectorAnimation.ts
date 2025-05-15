@@ -1,207 +1,305 @@
-// Ruta: src/components/vector/core/useVectorAnimation.ts
-
 import { useRef, useEffect, useState, useCallback } from 'react';
-import Victor from 'victor'; // Para cálculos vectoriales en animaciones
-import {
-  AnimatedVectorItem,
+import type {
+  AnimatedVectorItem as UIVectorItem,
   UseVectorAnimationProps,
   UseVectorAnimationReturn,
-  VectorDimensions,
-  AnimationSettings,
+  AnimationSettings as UIAnimationSettings
 } from './types';
 
-// --- Funciones de Easing --- 
-// Funciones de easing para animaciones
-// Para uso futuro en implementaciones más avanzadas de animaciones
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const easingFunctions = {
-  linear: (t: number) => t,
-  easeInQuad: (t: number) => t * t,
-  easeOutQuad: (t: number) => t * (2 - t),
-  easeInOutQuad: (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
-  easeOutElastic: (t: number) => {
-    const c4 = (2 * Math.PI) / 3;
-    return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
-  },
-};
+// Importar sistema centralizado de animaciones
+import type {
+  AnimationType,
+  AnimatedVectorItem as ModularVectorItem,
+  AnimationSettings as ModularAnimationSettings,
+} from './animations/animationTypes';
+
+import {
+  updateVectorByType,
+  getDefaultPropsForType,
+  triggerPulse as triggerCenterPulse
+} from './animations';
+
+// --- Constantes ---
+const DEFAULT_EASING_FACTOR = 0.05;
+const MAX_DELTA_TIME = 0.1;
+const MS_TO_SECONDS = 0.001;
 
 /**
- * Calcula el ángulo suavizado entre el ángulo actual y el objetivo
- */
-const interpolateAngle = (currentAngle: number, targetAngle: number, easingFactor: number): number => {
-  // Normalizar ángulos a 0-360
-  currentAngle = ((currentAngle % 360) + 360) % 360;
-  targetAngle = ((targetAngle % 360) + 360) % 360;
-  
-  // Calcular la diferencia más corta
-  let delta = targetAngle - currentAngle;
-  if (delta > 180) delta -= 360;
-  if (delta < -180) delta += 360;
-  
-  // Aplicar easing
-  return currentAngle + delta * easingFactor;
-};
-
-/**
- * Interpola suavemente entre dos valores
- */
-const interpolateValue = (currentValue: number, targetValue: number, easingFactor: number): number => {
-  return currentValue + (targetValue - currentValue) * easingFactor;
-};
-
-/**
- * Hook para animar vectores en un grid
+ * Hook para la animación de vectores
+ * Maneja el ciclo de animación y actualiza las propiedades de cada vector
+ * utilizando el sistema modular de animaciones
  */
 export const useVectorAnimation = ({
-  initialVectors,
+  initialVectors = [],
   dimensions,
-  animationSettings,
+  animationSettings = {},
   mousePosition,
   pulseTrigger,
   onPulseComplete,
   onAllPulsesComplete,
 }: UseVectorAnimationProps): UseVectorAnimationReturn => {
-  // Estado principal
-  const [animatedVectors, setAnimatedVectors] = useState<AnimatedVectorItem[]>(initialVectors || []);
-  
-  // Referencias para mantener valores entre renders
-  const settingsRef = useRef<AnimationSettings>(animationSettings);
-  const dimensionsRef = useRef<VectorDimensions | undefined>(dimensions);
-  const mousePosRef = useRef<Victor | null>(mousePosition ? new Victor(mousePosition.x, mousePosition.y) : null);
+  // Referencias para la animación
+  const animationFrameIdRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number>(performance.now() * MS_TO_SECONDS);
   const pulseStartTimeRef = useRef<number | null>(null);
-  const lastFrameTimeRef = useRef<number>(performance.now());
-  const requestAnimationFrameIdRef = useRef<number | null>(null);
   const onPulseCompleteRef = useRef(onPulseComplete);
   const onAllPulsesCompleteRef = useRef(onAllPulsesComplete);
-  const animationEnabled = !animationSettings?.isPaused;
 
-  // Actualizar refs cuando las props cambien
-  useEffect(() => { settingsRef.current = animationSettings; }, [animationSettings]);
-  useEffect(() => { dimensionsRef.current = dimensions; }, [dimensions]);
-  useEffect(() => { 
-    mousePosRef.current = mousePosition ? new Victor(mousePosition.x, mousePosition.y) : null;
+  // Configuración de la animación
+  const settingsRef = useRef<ModularAnimationSettings>({
+    type: animationSettings.animationType || 'smoothWaves',
+    baseSpeed: animationSettings.timeScale || 1.0,
+    canvasWidth: dimensions?.width || 800,
+    canvasHeight: dimensions?.height || 600,
+    mouseX: mousePosition?.x || null,
+    mouseY: mousePosition?.y || null,
+    isMouseDown: false,
+    resetOnTypeChange: true
+  });
+
+  // Estado para vectores animados - convertir del formato UI al formato del sistema modular
+  const [animatedVectors, setAnimatedVectors] = useState<ModularVectorItem[]>(() => {
+    return initialVectors.map(vector => ({
+      id: vector.id,
+      x: vector.baseX || 0,
+      y: vector.baseY || 0,
+      angle: vector.initialAngle || 0,
+      length: 10, // Valor por defecto
+      originalLength: 10, // Valor por defecto
+      color: '#000000', // Valor por defecto
+      originalColor: '#000000', // Valor por defecto
+      userData: (vector.customData || {}) as Record<string, unknown>
+    }));
+  });
+
+  // Mantener referencias actualizadas
+  useEffect(() => {
+    onPulseCompleteRef.current = onPulseComplete;
+    onAllPulsesCompleteRef.current = onAllPulsesComplete;
+  }, [onPulseComplete, onAllPulsesComplete]);
+
+  // Actualizar configuración de animación cuando cambian las props
+  useEffect(() => {
+    // Actualizar dimensiones
+    if (dimensions) {
+      settingsRef.current.canvasWidth = dimensions.width;
+      settingsRef.current.canvasHeight = dimensions.height;
+    }
+
+    // Actualizar tipo de animación
+    if (animationSettings.animationType && animationSettings.animationType !== settingsRef.current.type) {
+      settingsRef.current.type = animationSettings.animationType;
+      
+      // Cargar propiedades predeterminadas para el nuevo tipo de animación
+      const defaultProps = getDefaultPropsForType(animationSettings.animationType);
+      if (defaultProps) {
+        // Actualizar objeto settings usando indexación dinámica
+        settingsRef.current[animationSettings.animationType] = defaultProps;
+        
+        // Si hay propiedades adicionales, añadirlas
+        if (animationSettings.animationProps) {
+          // Usamos Object.assign para evitar errores de tipo con spread
+          Object.assign(settingsRef.current[animationSettings.animationType], 
+                       animationSettings.animationProps);
+        }
+      }
+    }
+    // Actualizar propiedades específicas de animación si el tipo no ha cambiado
+    else if (animationSettings.animationProps && settingsRef.current.type) {
+      const type = settingsRef.current.type;
+      if (!settingsRef.current[type]) {
+        settingsRef.current[type] = {};
+      }
+      // Añadir propiedades de animación al objeto de configuración
+      Object.assign(settingsRef.current[type], animationSettings.animationProps);
+    }
+    
+    // Actualizar velocidad de animación
+    if (typeof animationSettings.timeScale === 'number') {
+      settingsRef.current.baseSpeed = animationSettings.timeScale;
+    }
+    
+  }, [dimensions, animationSettings]);
+
+  // Actualizar la posición del ratón cuando cambia
+  useEffect(() => {
+    // El sistema modular necesita conocer la posición del ratón para animaciones interactivas
+    if (mousePosition) {
+      settingsRef.current.mouseX = mousePosition.x;
+      settingsRef.current.mouseY = mousePosition.y;
+      // El estado de click no se pasa en la interfaz actual pero podría añadirse en el futuro
+      settingsRef.current.isMouseDown = false;
+    } else {
+      settingsRef.current.mouseX = null;
+      settingsRef.current.mouseY = null;
+      settingsRef.current.isMouseDown = false;
+    }
   }, [mousePosition]);
-  useEffect(() => { onPulseCompleteRef.current = onPulseComplete; }, [onPulseComplete]);
-  useEffect(() => { onAllPulsesCompleteRef.current = onAllPulsesComplete; }, [onAllPulsesComplete]);
-
-  // Efecto para inicializar/actualizar el vector cuando cambia initialVectors
-  useEffect(() => {
-    if (!initialVectors || initialVectors.length === 0) return;
-    
-    setAnimatedVectors(initialVectors.map(item => ({
-      ...item,
-      currentAngle: item.initialAngle || 0,
-    })));
-  }, [initialVectors]);
-
-  // Detectar trigger de pulso
-  useEffect(() => {
-    if (pulseTrigger && pulseTrigger !== pulseStartTimeRef.current) {
-      pulseStartTimeRef.current = pulseTrigger;
-    }
-  }, [pulseTrigger]);
-
-  // La función principal de animación
-  const animate = useCallback(() => {
-    if (!animationEnabled || !animatedVectors || animatedVectors.length === 0) {
-      return;
-    }
-
-    const animationFrame = requestAnimationFrame(() => {
-      const currentTime = performance.now();
-      const deltaTime = Math.min(0.1, (currentTime - (lastFrameTimeRef.current || currentTime)) / 1000);
-      lastFrameTimeRef.current = currentTime;
-
-      const currentSettings = settingsRef.current;
-      const currentPulseStartTime = pulseStartTimeRef.current;
-      const allOverallPulsesCompleted = true; // Cambiado a const ya que nunca se reasigna
-
-      setAnimatedVectors((prevAnimatedVectors) => {
-        return prevAnimatedVectors.map(item => {
-          if (!currentSettings) {
-            return item;
-          }
-          
-          // Valores por defecto
-          let targetAngle = item.initialAngle || 0;
-          const targetLengthFactor = 1.0; // Cambiado a const ya que nunca se reasigna
-          const targetWidthFactor = 1.0; // Cambiado a const ya que nunca se reasigna
-          const targetIntensityFactor = 1.0; // Cambiado a const ya que nunca se reasigna
-
-          // Implementación simplificada para diferentes tipos de animaciones
-          switch (currentSettings.animationType) {
-            case 'centerPulse':
-              // Implementación básica de pulso
-              targetAngle = item.initialAngle || 0;
-              break;
-              
-            case 'randomLoop':
-              // Animación simple de rotación constante
-              targetAngle = (item.currentAngle + 1) % 360;
-              break;
-              
-            default:
-              // Mantener ángulo actual o inicial
-              targetAngle = item.initialAngle || 0;
-              break;
-          }
-
-          // Aplicar suavizado a los cambios
-          const easing = currentSettings.easingFactor ?? 0.1;
-          const newAngle = interpolateAngle(item.currentAngle, targetAngle, easing * (deltaTime * 60));
-          
-          // Crear copia actualizada del vector
-          return {
-            ...item,
-            currentAngle: newAngle,
-            lengthFactor: currentSettings.dynamicLengthEnabled ? 
-              interpolateValue(item.lengthFactor ?? 1, targetLengthFactor, easing * (deltaTime * 60)) : 
-              item.lengthFactor,
-            widthFactor: currentSettings.dynamicWidthEnabled ? 
-              interpolateValue(item.widthFactor ?? 1, targetWidthFactor, easing * (deltaTime * 60)) : 
-              item.widthFactor,
-            intensityFactor: currentSettings.dynamicIntensity ? 
-              interpolateValue(item.intensityFactor ?? 1, targetIntensityFactor, easing * (deltaTime * 60)) : 
-              item.intensityFactor
-          };
-        });
-      });
-
-      // Gestionar la finalización de los pulsos
-      if (currentPulseStartTime && allOverallPulsesCompleted && onAllPulsesCompleteRef.current) {
-        onAllPulsesCompleteRef.current();
-        pulseStartTimeRef.current = null;
-      }
-
-      // Continuar el ciclo de animación
-      requestAnimationFrameIdRef.current = requestAnimationFrame(animate);
-    });
-    
-    requestAnimationFrameIdRef.current = animationFrame;
-  }, [animationEnabled, animatedVectors]);
-
-  // Efecto para iniciar y detener la animación
-  useEffect(() => {
-    if (animationEnabled && animatedVectors.length > 0) {
-      animate();
-    }
-    
-    return () => {
-      if (requestAnimationFrameIdRef.current !== null) {
-        cancelAnimationFrame(requestAnimationFrameIdRef.current);
-        requestAnimationFrameIdRef.current = null;
-      }
-    };
-  }, [animationEnabled, animatedVectors.length, animate]);
-
-  // Función para desencadenar un pulso
+  
+  /**
+   * Función para iniciar un pulso en la animación
+   * Esta función se expone al componente para permitir iniciar efectos de pulso manualmente
+   */
   const triggerPulse = useCallback(() => {
-    pulseStartTimeRef.current = performance.now();
+    // Registrar el tiempo de inicio del pulso para su seguimiento
+    pulseStartTimeRef.current = performance.now() * MS_TO_SECONDS;
+    
+    // Si estamos usando la animación de pulso central, notificar al sistema modular
+    if (settingsRef.current.type === 'centerPulse') {
+      // Calcular punto central relativo (0.0-1.0) desde la posición absoluta
+      const centerX = settingsRef.current.mouseX !== null ? 
+        settingsRef.current.mouseX / settingsRef.current.canvasWidth : 0.5;
+      const centerY = settingsRef.current.mouseY !== null ? 
+        settingsRef.current.mouseY / settingsRef.current.canvasHeight : 0.5;
+      
+      // Llamar a la función de pulso del sistema modular con las coordenadas normalizadas
+      triggerCenterPulse(centerX, centerY, performance.now() * MS_TO_SECONDS);
+    }
+    
+    // Aplicar un efecto de pulso a todos los vectores temporalmente
+    setAnimatedVectors(prevVectors => 
+      prevVectors.map(vector => ({
+        ...vector,
+        length: vector.originalLength * 1.2 // Expandir inicialmente
+      }))
+    );
   }, []);
 
-  return { 
-    animatedVectors, 
-    setAnimatedVectors,
-    triggerPulse 
+  // Efecto para detectar cambios en el trigger de pulso
+  useEffect(() => {
+    if (pulseTrigger) {
+      triggerPulse();
+    }
+  }, [pulseTrigger, triggerPulse]);
+
+  // Bucle principal de animación
+  const animate = useCallback((timestamp: number) => {
+    const currentTime = timestamp * MS_TO_SECONDS;
+    const deltaTime = Math.min(MAX_DELTA_TIME, currentTime - lastFrameTimeRef.current);
+    lastFrameTimeRef.current = currentTime;
+
+    // Verificar si hay un pulso activo y su progreso
+    const pulseStartTime = pulseStartTimeRef.current;
+    let allPulsesCompleted = true;
+
+    if (pulseStartTime) {
+      const pulseElapsedMs = currentTime - pulseStartTime;
+      const pulseDuration = 1; // 1 segundo (en segundos)
+
+      // Determinar si el pulso ha terminado
+      if (pulseElapsedMs >= pulseDuration) {
+        pulseStartTimeRef.current = null;
+        
+        // Notificar que todos los pulsos han terminado
+        if (allPulsesCompleted && onAllPulsesCompleteRef.current) {
+          onAllPulsesCompleteRef.current();
+        }
+      } else {
+        allPulsesCompleted = false;
+      }
+    }
+
+    // Actualizar todos los vectores usando el sistema modular
+    setAnimatedVectors(prevVectors => 
+      prevVectors.map(vector => 
+        updateVectorByType(vector, currentTime, settingsRef.current, prevVectors)
+      )
+    );
+
+    // Continuar el ciclo de animación
+    animationFrameIdRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  // Iniciar y detener la animación
+  useEffect(() => {
+    // Iniciar animación si no está pausada
+    if (!animationSettings.isPaused) {
+      animationFrameIdRef.current = requestAnimationFrame(animate);
+    }
+
+    // Limpiar al desmontar
+    return () => {
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = null;
+      }
+    };
+  }, [animate, animationSettings.isPaused]);
+  
+  // Convertir los vectores animados del formato del sistema modular al formato de la interfaz de usuario
+  const uiVectors = animatedVectors.map(vector => ({
+    id: vector.id,
+    r: 0, // Valores por defecto para propiedades de grid
+    c: 0,
+    baseX: vector.x,
+    baseY: vector.y,
+    originalX: vector.x,
+    originalY: vector.y,
+    initialAngle: vector.angle,
+    currentAngle: vector.angle,
+    lengthFactor: vector.length / (vector.originalLength || 1),
+    widthFactor: 1,
+    intensityFactor: 1,
+    customData: vector.userData
+  }));
+
+  // Exponer la API pública del hook según el contrato de tipos
+  return {
+    animatedVectors: uiVectors,
+    triggerPulse,
+    setAnimatedVectors: (newState: UIVectorItem[] | ((prev: UIVectorItem[]) => UIVectorItem[])) => {
+      // Convertir desde la interfaz UI al formato modular
+      if (Array.isArray(newState)) {
+        // Si es un array, convertir directamente cada elemento
+        const modularVectors = newState.map(uiVector => ({
+          id: uiVector.id,
+          x: uiVector.baseX || 0,
+          y: uiVector.baseY || 0,
+          angle: uiVector.initialAngle || 0,
+          length: 10,
+          originalLength: 10, 
+          color: '#000000',
+          originalColor: '#000000',
+          userData: uiVector.customData || {} as Record<string, unknown>
+        }));
+        setAnimatedVectors(modularVectors);
+      } else {
+        // Si es una función, proporcionar el estado UI actual y convertir el resultado
+        setAnimatedVectors(currentModularVectors => {
+          // Convertir el estado actual a formato UI para la función
+          const currentUiVectors = currentModularVectors.map(modVector => ({
+            id: modVector.id,
+            r: 0,
+            c: 0,
+            baseX: modVector.x,
+            baseY: modVector.y,
+            originalX: modVector.x,
+            originalY: modVector.y,
+            initialAngle: modVector.angle,
+            currentAngle: modVector.angle,
+            lengthFactor: modVector.length / (modVector.originalLength || 1),
+            widthFactor: 1,
+            intensityFactor: 1,
+            customData: modVector.userData
+          }));
+          
+          // Llamar a la función con el estado UI
+          const newUiVectors = newState(currentUiVectors);
+          
+          // Convertir el resultado de vuelta al formato modular
+          return newUiVectors.map(uiVector => ({
+            id: uiVector.id,
+            x: uiVector.baseX || 0,
+            y: uiVector.baseY || 0,
+            angle: uiVector.initialAngle || 0,
+            length: 10,
+            originalLength: 10,
+            color: '#000000',
+            originalColor: '#000000',
+            userData: uiVector.customData || {} as Record<string, unknown>
+          }));
+        });
+      }
+    }
   };
 };

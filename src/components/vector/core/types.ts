@@ -59,6 +59,8 @@ export interface AnimatedVectorItem { // `export`
   c: number;
   baseX: number;
   baseY: number;
+  originalX: number; // Posición X original en el grid
+  originalY: number; // Posición Y original en el grid
   initialAngle: number;
   currentAngle: number;
   lengthFactor: number;
