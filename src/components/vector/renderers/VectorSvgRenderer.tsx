@@ -1,14 +1,40 @@
 // Ruta: src/components/vector/renderers/VectorSvgRenderer.tsx
 'use client';
 
-import React, { useMemo, useRef } from 'react';
-import type { 
-  AnimatedVectorItem,
-  VectorColorValue,
-  GradientConfig,
-  VectorRenderProps,
-  VectorShape,
+import React, { useRef, useMemo, useCallback } from 'react';
+import { 
+  AnimatedVectorItem, 
+  VectorColorValue, 
+  VectorShape, 
+  GradientConfig, 
+  VectorRenderProps 
 } from '../core/types';
+import { formatSvgPoint, fixTransformPrecision } from '@/utils/precision';
+import { ensureSafeNumber } from '../utils/mathUtils';
+import { applyCulling } from '../core/culling';
+
+// Función auxiliar para formatear números con precisión fija
+const fixPrecision = (value: number, precision: number = 2): number => {
+  const factor = Math.pow(10, precision);
+  return Math.round(value * factor) / factor;
+};
+
+// Interfaz para las opciones de culling
+interface CullingOptions {
+  vectors: AnimatedVectorItem[];
+  width: number;
+  height: number;
+  padding: number;
+  enableLOD: boolean;
+  useQuadtree: boolean;
+}
+
+// Interfaz para las opciones de applyCulling
+interface ApplyCullingOptions {
+  padding: number;
+  enableLOD: boolean;
+  useQuadtree: boolean;
+}
 
 // --- Props del Componente Renderer ---
 interface VectorSvgRendererProps {
@@ -34,6 +60,7 @@ interface VectorSvgRendererProps {
   // Propiedades adicionales
   interactionEnabled?: boolean;
   debugMode?: boolean;
+  cullingEnabled?: boolean;
   frameInfo?: {
     timestamp: number;
     frameCount: number;
@@ -55,7 +82,8 @@ interface ParsedViewBox { x: number; y: number; width: number; height: number; }
 // Función de utilidad para garantizar valores numéricos seguros para atributos SVG
 const ensureSafeNumber = (value: unknown, defaultValue: number = 0): number => {
   if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
-    return value;
+    // Usar fixPrecision para garantizar consistencia de valores entre servidor y cliente
+    return fixPrecision(value);
   }
   return defaultValue;
 };
@@ -113,57 +141,59 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
     useDynamicProps = false,
     interactionEnabled = true,
     debugMode = false,
+    cullingEnabled = false,
   } = props;
 
   const svgRef = useRef<SVGSVGElement>(null);
-
-  const gradientMapRef = useRef(new Map<string, { config: GradientConfig, id: string }>());
+  const gradientMap = useRef<Map<string, { config: GradientConfig; id: string }>>(new Map());
   const gradientIdCounterRef = useRef(0);
 
+  // Generar IDs únicos para gradientes
+  const getGradientId = (key: string, config: GradientConfig): string => {
+    if (!gradientMap.current.has(key)) {
+      const id = `global-grad-${gradientIdCounterRef.current}`;
+      gradientIdCounterRef.current += 1;
+      gradientMap.current.set(key, { config, id });
+    }
+    return gradientMap.current.get(key)!.id;
+  };
+
   const defsContent = useMemo(() => {
-    const gradientMap = gradientMapRef.current;
-    const gradientIdCounter = gradientIdCounterRef.current.toString();
-    gradientIdCounterRef.current++;
-    const localGradientDefs: React.JSX.Element[] = [];
+    const localGradientDefs: React.ReactNode[] = [];
     
     // Procesar color base si es un GradientConfig
     if (typeof baseVectorColor === 'object' && baseVectorColor !== null && 'type' in baseVectorColor) {
       const key = JSON.stringify(baseVectorColor);
-      if (!gradientMap.has(key)) {
-        const id = `global-grad-${gradientIdCounter}`;
-        gradientMap.set(key, { config: baseVectorColor, id });
-      }
-    }
-
-    gradientMap.forEach(({ config, id }) => {
+      const gradientId = getGradientId(key, baseVectorColor);
+      
       const commonProps = {
-        id,
-        gradientUnits: config.units || "objectBoundingBox",
+        id: gradientId,
+        gradientUnits: baseVectorColor.units || "objectBoundingBox",
       };
       
-      const stops = config.stops.map((stop, i) => (
+      const stops = baseVectorColor.stops.map((stop, i) => (
         <stop
-          key={`${id}-stop-${i}`}
+          key={`${gradientId}-stop-${i}`}
           offset={`${stop.offset * 100}%`}
           stopColor={stop.color}
           stopOpacity={stop.opacity !== undefined ? stop.opacity : 1}
         />
       ));
       
-      if (config.type === 'linear') {
+      if (baseVectorColor.type === 'linear') {
         localGradientDefs.push(
-          <linearGradient key={id} {...commonProps} {...config.coords}>
+          <linearGradient key={gradientId} {...commonProps} {...baseVectorColor.coords}>
             {stops}
           </linearGradient>
         );
-      } else if (config.type === 'radial') {
+      } else if (baseVectorColor.type === 'radial') {
         localGradientDefs.push(
-          <radialGradient key={id} {...commonProps} {...config.coords}>
+          <radialGradient key={gradientId} {...commonProps} {...baseVectorColor.coords}>
             {stops}
           </radialGradient>
         );
       }
-    });
+    }
 
     // SVG de usuario
     let userSymbolDef: React.JSX.Element | null = null;
@@ -206,7 +236,7 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
       const resolvedBaseWidth = typeof baseVectorWidth === 'function' ? baseVectorWidth(item) : baseVectorWidth;
       
       // Extraer propiedades del vector con valores por defecto seguros
-      const { id, baseX, baseY, currentAngle } = item;
+      const { id, baseX, baseY, currentAngle, animationState = {} } = item;
       
       // Determinar si usamos props dinámicas o estáticas
       let actualLength: number;
@@ -247,7 +277,7 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
       } else if (typeof baseVectorColor === 'object' && baseVectorColor !== null) {
         // Buscar ID del gradiente
         const key = JSON.stringify(baseVectorColor);
-        const gradientId = gradientMapRef.current.get(key)?.id;
+        const gradientId = getGradientId(key, baseVectorColor);
         if (gradientId) {
           fillOrStrokeColor = `url(#${gradientId})`;
         }
@@ -287,29 +317,31 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
 
       // Renderizar vector según su forma
       if (baseVectorShape === 'arrow') {
-        const arrowHeadSize = Math.min(actualLength * 0.3, actualStrokeWidth * 2 + 5);
-        const lineBodyEnd = actualLength - arrowHeadSize * 0.8;
+        // Para flechas: línea con triángulo
+        const arrowHeadSize = ensureSafeNumber(actualStrokeWidth) * 2.5;
         
         return (
           <g key={item.id || index} transform={groupTransform}>
-            {lineBodyEnd > 0 && (
-              <line 
-                x1={0} 
-                y1={0} 
-                x2={ensureSafeNumber(lineBodyEnd)} 
-                y2={0} 
-                stroke={fillOrStrokeColor}
-                strokeWidth={ensureSafeNumber(actualStrokeWidth)}
-                strokeLinecap={baseStrokeLinecap || 'butt'} 
-              />
-            )}
-            {actualLength > 0 && (
-              <polygon
-                points={`${ensureSafeNumber(actualLength)},0 ${ensureSafeNumber(lineBodyEnd)},${ensureSafeNumber(-arrowHeadSize / 2)} ${ensureSafeNumber(lineBodyEnd)},${ensureSafeNumber(arrowHeadSize / 2)}`}
-                fill={fillOrStrokeColor}
-                stroke="none"
-              />
-            )}
+            <line 
+              x1={0} 
+              y1={0} 
+              x2={ensureSafeNumber(actualLength)} 
+              y2={0} 
+              stroke={fillOrStrokeColor}
+              strokeWidth={ensureSafeNumber(actualStrokeWidth)}
+              strokeLinecap={baseStrokeLinecap || 'butt'}
+              data-vectorid={item.id}
+            />
+            <polygon 
+              points={`
+                ${formatSvgPoint(ensureSafeNumber(actualLength), 0)},
+                ${formatSvgPoint(ensureSafeNumber(actualLength - arrowHeadSize), -ensureSafeNumber(arrowHeadSize / 2))},
+                ${formatSvgPoint(ensureSafeNumber(actualLength - arrowHeadSize), ensureSafeNumber(arrowHeadSize / 2))}
+              `}
+              fill={fillOrStrokeColor}
+              strokeLinejoin="round"
+              data-vectorid={item.id}
+            />
           </g>
         );
       } else if (baseVectorShape === 'dot') {
@@ -343,19 +375,22 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
         return (
           <g key={item.id || index} transform={groupTransform}>
             <path
-              d={`M ${-radius},0 A ${radius},${radius} 0 0 1 ${radius},0`}
+              d={`M ${fixPrecision(-radius)},0 A ${fixPrecision(radius)},${fixPrecision(radius)} 0 0 1 ${fixPrecision(radius)},0`}
               fill={fillOrStrokeColor}
               stroke="none"
             />
           </g>
         );
       } else if (baseVectorShape === 'curve') {
-        const controlY = -ensureSafeNumber(actualLength) * ensureSafeNumber(item.animationState?.curveFactor ?? 0.3, 0.3);
+        const curveFactor = 'curveFactor' in animationState && typeof animationState.curveFactor === 'number' 
+          ? animationState.curveFactor 
+          : 0.3;
+        const controlY = -ensureSafeNumber(actualLength) * ensureSafeNumber(curveFactor, 0.3);
         
         return (
           <g key={item.id || index} transform={groupTransform}>
             <path 
-              d={`M 0 0 Q ${ensureSafeNumber(actualLength/2)} ${ensureSafeNumber(controlY)} ${ensureSafeNumber(actualLength)} 0`} 
+              d={`M 0 0 Q ${fixPrecision(actualLength/2)} ${fixPrecision(controlY)} ${fixPrecision(actualLength)} 0`} 
               stroke={fillOrStrokeColor}
               fill="none"
               strokeWidth={ensureSafeNumber(actualStrokeWidth)}
@@ -392,26 +427,23 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
   const handleClick = interactionEnabled ? (e: React.MouseEvent<SVGElement>) => {
     if (!onVectorClick) return;
     
-    // Encontrar el item más cercano al clic
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    // Usar closest para manejar correctamente elementos anidados
+    const target = (e.target as Element).closest('[data-vectorid]') as HTMLElement;
+    if (!target) return;
     
-    // Buscar el vector más cercano (implementación simplificada)
-    const target = e.target as SVGElement;
     const vectorId = target.getAttribute('data-vectorid');
+    if (!vectorId) return;
     
-    if (vectorId) {
-      const clickedItem = vectors.find(v => v.id === vectorId);
-      if (clickedItem) {
-        onVectorClick(clickedItem, e);
-      }
+    const clickedItem = vectors.find(v => v.id === vectorId);
+    if (clickedItem) {
+      onVectorClick(clickedItem, e);
     }
   } : undefined;
   
   const handleMouseMove = interactionEnabled && onVectorHover ? (e: React.MouseEvent<SVGElement>) => {
-    // Similar a handleClick pero para hover
-    const target = e.target as SVGElement;
-    const vectorId = target.getAttribute('data-vectorid');
+    // Usar closest para manejar correctamente elementos anidados
+    const target = (e.target as Element).closest('[data-vectorid]') as HTMLElement;
+    const vectorId = target?.getAttribute('data-vectorid') || null;
     
     if (vectorId) {
       const hoveredItem = vectors.find(v => v.id === vectorId);
@@ -424,45 +456,89 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
     }
   } : undefined;
 
-  // Crear el elemento SVG
+  // Calcular el padding para el culling de manera segura
+  const cullingPadding = useMemo(() => {
+    // Si baseVectorLength es una función, usamos el primer vector como referencia
+    // o un valor por defecto si no hay vectores
+    const lengthValue = typeof baseVectorLength === 'function'
+      ? props.vectors.length > 0
+        ? baseVectorLength(props.vectors[0])
+        : 50 * 2 // Valor por defecto si no hay vectores
+      : baseVectorLength;
+      
+    return fixPrecision(Math.max(50, lengthValue / 2), 0);
+  }, [baseVectorLength, props.vectors]);
+
+  // Aplicar culling si está habilitado
+  const optimizedVectors = useMemo(() => {
+    if (!props.cullingEnabled || props.vectors.length === 0) return props.vectors;
+    
+    const culledVectors = applyCulling(
+      props.vectors,
+      props.width,
+      props.height,
+      {
+        padding: cullingPadding,
+        enableLOD: true,
+        useQuadtree: props.vectors.length > 1000
+      }
+    );
+    
+    if (props.debugMode) {
+      const optimizationRate = fixPrecision((1 - culledVectors.length / props.vectors.length) * 100, 1);
+      console.info(`[Culling] Optimizados ${optimizationRate}% (${culledVectors.length}/${props.vectors.length} vectores renderizados)`);
+    }
+    
+    return culledVectors;
+  }, [props.vectors, props.width, props.height, props.cullingEnabled, cullingPadding, props.debugMode]);
+
+  // Renderizar el componente
   return (
     <svg
       ref={svgRef}
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      xmlns="http://www.w3.org/2000/svg"
-      xmlnsXlink="http://www.w3.org/1999/xlink"
+      width={props.width}
+      height={props.height}
+      viewBox={`0 0 ${props.width} ${props.height}`}
       onClick={handleClick}
       onMouseMove={handleMouseMove}
-      style={{ 
-        display: 'block',
-        userSelect: 'none', 
-        backgroundColor: backgroundColor,
-        border: debugMode ? '2px dashed red' : 'none'
+      style={{
+        backgroundColor: props.backgroundColor,
+        ...(props.debugMode ? { border: '1px solid red' } : {})
       }}
     >
-      {defsContent}
-      
-      {backgroundColor !== 'transparent' && backgroundColor !== 'none' && (
-        <rect x="0" y="0" width={width} height={height} fill={backgroundColor} />
-      )}
-      
-      <g data-testid="vector-group-container">
-        {vectors.map(renderVector)}
-      </g>
-      
-      {debugMode && (
-        <rect 
-          x="0" 
-          y="0" 
-          width={width} 
-          height={height} 
-          stroke="var(--primary)" 
-          strokeWidth="1" 
-          fill="none" 
-          strokeDasharray="5,5" 
+      {/* Definiciones de gradientes */}
+      <defs>
+        {defsContent}
+      </defs>
+
+      {/* Fondo si es necesario */}
+      {props.backgroundColor && (
+        <rect
+          width={props.width}
+          height={props.height}
+          fill={props.backgroundColor}
+          style={{ pointerEvents: 'none' }}
         />
+      )}
+
+      {/* Vectores optimizados */}
+      {optimizedVectors.map((vector) => renderVector(vector))}
+
+      {/* Debug info */}
+      {props.debugMode && (
+        <g className="debug-info">
+          <text x="10" y="20" fill="red" fontSize="12">
+            Vectores: {props.vectors.length} (mostrando {optimizedVectors.length})
+          </text>
+          <text x="10" y="40" fill="red" fontSize="12">
+            Tamaño: {props.width} x {props.height}
+          </text>
+          {props.cullingEnabled && (
+            <text x="10" y="60" fill="red" fontSize="12">
+              Culling: activado (padding: {cullingPadding}px)
+            </text>
+          )}
+        </g>
       )}
     </svg>
   );

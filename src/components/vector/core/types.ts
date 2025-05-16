@@ -20,6 +20,9 @@ export type VectorShape =
 export type StrokeLinecap = 'butt' | 'round' | 'square';
 export type RotationOrigin = 'start' | 'center' | 'end';
 
+// Define los modos de operación del gestor de aspecto
+export type Mode = 'aspect-fixed' | 'density' | 'manual';
+
 // Define las opciones de relación de aspecto soportadas
 export type AspectRatioOption =
   | 'auto'        // Se adapta al contenedor padre (anteriormente 'container')
@@ -230,7 +233,7 @@ export interface UseVectorAnimationProps {
 export interface UseVectorAnimationReturn {
   animatedVectors: AnimatedVectorItem[];
   setAnimatedVectors: React.Dispatch<React.SetStateAction<AnimatedVectorItem[]>>; // Para manipulación externa si es necesario
-  triggerPulse: () => void; // Función para iniciar un pulso de animación
+  triggerPulse: (centerX: number, centerY: number) => void; // Función para iniciar un pulso de animación en coordenadas específicas
 }
 
 export interface UseContainerDimensionsArgs {
