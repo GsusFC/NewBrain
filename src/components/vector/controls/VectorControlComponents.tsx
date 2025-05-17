@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { debounce } from 'lodash';
-import { Slider } from '@/components/ui/slider';
+import { Slider } from '@/components/ui/slider-headless';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select-headless';
+import { Switch } from '@/components/ui/switch-headless';
 import { Button } from '@/components/ui/button';
-import { Label as UILabel } from '@/components/ui/label';
+import { Label as UILabel } from '@/components/ui/label-headless';
 
 // Componente Label personalizado basado en UILabel de shadcn/ui
 const Label = ({ htmlFor, className = '', children }: { htmlFor?: string; className?: string; children: React.ReactNode }) => (
@@ -116,58 +116,23 @@ export function SliderControl({
   
   return (
     <div className={`space-y-2 ${className}`}>
-      <div className="flex items-center justify-between">
-        <Label htmlFor={`slider-${label}`} className="text-sm font-medium text-foreground">
-          {label}
-        </Label>
-        <div className="px-2 py-1 text-xs font-semibold rounded-md bg-primary/10 text-primary">
-          {formatValue(safeValue)}
-        </div>
+      <div className="flex justify-between items-center">
+        <Label className="text-xs font-medium">{label}</Label>
+        <span className="text-xs text-gray-500">{formatValue(safeValue)}</span>
       </div>
       
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Slider
-            id={`slider-${label}`}
-            value={[safeValue]}
-            min={min}
-            max={max}
-            step={step}
-            onValueChange={handleSliderChange}
-            onPointerUp={handleSliderChangeComplete}
-            className="
-              [&_[role=slider]]:h-5 
-              [&_[role=slider]]:w-5 
-              [&_[role=slider]]:border-2 
-              [&_[role=slider]]:border-primary 
-              [&_[role=slider]]:bg-background 
-              [&_[role=slider]]:shadow-md 
-              [&_[role=slider]]:transition-all 
-              [&_[role=slider]]:duration-150
-              [&_[role=slider]]:hover:bg-primary/20
-              [&_[role=slider]]:focus:bg-primary/20
-              [&_[role=slider]]:data-[dragging=true]:bg-primary/30
-              [&_.SliderTrack]:h-2 
-              [&_.SliderTrack]:bg-muted
-              [&_.SliderRange]:h-2 
-              [&_.SliderRange]:bg-primary/70
-            "
-          />
-          
-          <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
-            <span>{minLabel || formatValue(min)}</span>
-            <span>{maxLabel || formatValue(max)}</span>
-          </div>
-        </div>
-        
-        <Input
-          type="text"
-          inputMode="numeric"
-          value={inputValue}
-          onChange={handleInputChange}
-          onBlur={handleInputBlur}
-          className="w-20 h-8 text-xs text-right bg-background border-input text-foreground"
+      <div className="flex items-center gap-2 pt-1">
+        {minLabel && <span className="text-xs">{minLabel}</span>}
+        <Slider
+          value={[safeValue]}
+          min={min}
+          max={max}
+          step={step}
+          onValueChange={handleSliderChange}
+          onValueCommit={handleSliderChangeComplete}
+          className="flex-1"
         />
+        {maxLabel && <span className="text-xs">{maxLabel}</span>}
       </div>
     </div>
   );
@@ -191,20 +156,17 @@ export function SelectControl({
 }: SelectControlProps) {
   return (
     <div className={`space-y-2 ${className}`}>
-      <Label htmlFor={`select-${label}`} className="text-sm font-medium">
-        {label}
-      </Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={`select-${label}`} className="w-full h-8 text-xs">
-          <SelectValue placeholder={`Seleccionar ${label}`} />
+      <Label className="text-xs font-medium">{label}</Label>
+      <Select
+        value={value}
+        onChange={onChange}
+      >
+        <SelectTrigger>
+          <SelectValue>{options.find(opt => opt.value === value)?.label || 'Selecciona opción'}</SelectValue>
         </SelectTrigger>
-        <SelectContent className="bg-popover/95 backdrop-blur supports-[backdrop-filter]:bg-popover/85">
+        <SelectContent>
           {options.map((option) => (
-            <SelectItem 
-              key={option.value} 
-              value={option.value}
-              className="bg-transparent hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
-            >
+            <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>
           ))}
@@ -218,29 +180,49 @@ export function SelectControl({
 interface SwitchControlProps {
   label: string;
   checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
+  onChange?: (checked: boolean) => void;
+  /** @deprecated Use onChange instead */
+  onCheckedChange?: (checked: boolean) => void;
   className?: string;
 }
+
+type SwitchProps = React.ComponentProps<typeof Switch>;
 
 export function SwitchControl({
   label,
   checked,
+  onChange,
   onCheckedChange,
   className = "",
-}: SwitchControlProps) {
+  ...props
+}: SwitchControlProps & Omit<SwitchProps, 'checked' | 'onChange'>) {
+  // Manejar el cambio de estado
+  const handleChange = React.useCallback((newChecked: boolean) => {
+    // Primero intentamos con onChange (nuevo estándar)
+    if (typeof onChange === 'function') {
+      onChange(newChecked);
+    } 
+    // Luego con onCheckedChange (mantenemos por compatibilidad)
+    else if (typeof onCheckedChange === 'function') {
+      onCheckedChange(newChecked);
+    }
+  }, [onChange, onCheckedChange]);
+
+  // Filtramos las props para eliminar onCheckedChange y otras no deseadas
+  const filteredProps = React.useMemo(() => {
+    const { onCheckedChange: _, ...rest } = props as Record<string, unknown>;
+    return rest as Omit<SwitchProps, 'checked' | 'onChange'>;
+  }, [props]);
+
   return (
-    <div className={`flex flex-col gap-2 p-3 rounded-lg border border-border hover:border-primary/70 transition-all ${checked ? 'bg-primary/10' : 'bg-card'} ${className}`}>
-      <div className="flex items-center justify-between w-full">
-        <Label htmlFor={`switch-${label}`} className="text-sm font-medium">
-          {label}
-        </Label>
-        <Switch
-          id={`switch-${label}`}
-          checked={checked}
-          onCheckedChange={onCheckedChange}
-          className="data-[state=checked]:bg-primary h-6 w-11"
-        />
-      </div>
+    <div className={`flex items-center justify-between ${className}`}>
+      <Label className="text-xs font-medium">{label}</Label>
+      <Switch
+        checked={checked}
+        onChange={handleChange}
+        className="data-[state=checked]:bg-primary"
+        {...filteredProps}
+      />
     </div>
   );
 }
@@ -398,7 +380,6 @@ export function SliderWithInput({
   return (
     <div className={`grid grid-cols-[1fr,80px] gap-2 items-center ${className}`}>
       <Slider
-        id={id}
         value={localValue}
         min={min}
         max={max}

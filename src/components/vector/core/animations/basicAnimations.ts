@@ -1,11 +1,20 @@
-import { AnimatedVectorItem, VectorDimensions } from '../types';
 import { 
   DirectionalFlowProps, 
   VortexProps,
   AnimationCalculation,
   FlockingProps,
-  FlockingAnimationState
+  FlockingAnimationState,
+  type AnimatedVectorItem,
+  type VectorDimensions
 } from './animationTypes';
+import { fixPrecision } from '@/utils/precision';
+
+// Para detección temprana de problemas según TDD
+const assert = (condition: boolean, message: string): void => {
+  if (!condition && process.env.NODE_ENV !== 'production') {
+    console.error(`[Assertion Error] ${message}`);
+  }
+};
 
 /**
  * Calcula el ángulo para la animación de "flujo direccional"
@@ -22,17 +31,27 @@ export const calculateDirectionalFlow = (
     turbulence = 0 
   } = props;
   
-  let angle = flowAngle;
+  // Establecer ángulo base con precisión controlada
+  let angle = fixPrecision(flowAngle, 6);
   
   if (turbulence > 0) {
     // Añadir un pequeño ruido pseudoaleatorio basado en la posición del vector
     // para que no todos los vectores tengan la misma turbulencia exacta
-    const seed = item.baseX * 0.12 + item.baseY * 0.15;
-    const noise = (Math.sin(seed + timestamp * 0.001) * 0.5 + 0.5) * turbulence * 45;
-    angle += noise - (turbulence * 22.5); // Centrar el ruido alrededor de flowAngle
+    const seed = fixPrecision(item.baseX * 0.12 + item.baseY * 0.15, 4);
+    const timeComponent = fixPrecision(timestamp * 0.001, 4);
+    const sinValue = fixPrecision(Math.sin(seed + timeComponent), 4);
+    const normalizedNoise = fixPrecision(sinValue * 0.5 + 0.5, 4);
+    const noise = fixPrecision(normalizedNoise * turbulence * 45, 4);
+    const turbulenceOffset = fixPrecision(turbulence * 22.5, 4);
+    
+    // Centrar el ruido alrededor de flowAngle con precisión controlada
+    angle = fixPrecision(angle + noise - turbulenceOffset, 6);
+    
+    // Verificar que el ángulo está en un rango válido
+    assert(isFinite(angle), `Ángulo con valor no válido: ${angle}`);
   }
   
-  return { angle };
+  return { angle: angle };
 };
 
 /**
@@ -53,32 +72,48 @@ export const calculateVortex = (
     swirlDirection = 'clockwise' 
   } = props;
   
-  // Determinar el centro del vórtice (usar el centro de la cuadrícula si no se especifica)
-  const centerX = vortexCenterX !== undefined ? vortexCenterX : dimensions.width / 2;
-  const centerY = vortexCenterY !== undefined ? vortexCenterY : dimensions.height / 2;
+  // Determinar el centro del vórtice con precisión controlada
+  const centerX = fixPrecision(vortexCenterX !== undefined ? vortexCenterX : dimensions.width / 2, 2);
+  const centerY = fixPrecision(vortexCenterY !== undefined ? vortexCenterY : dimensions.height / 2, 2);
   
-  // Calcular la dirección al centro del vórtice
-  const dx = item.baseX - centerX;
-  const dy = item.baseY - centerY;
+  // Calcular la dirección al centro del vórtice con precisión controlada
+  const dx = fixPrecision(item.baseX - centerX, 2);
+  const dy = fixPrecision(item.baseY - centerY, 2);
   
-  // Distancia al centro del vórtice
-  const distance = Math.sqrt(dx * dx + dy * dy);
+  // Distancia al centro del vórtice con precisión controlada
+  const distance = fixPrecision(Math.sqrt(dx * dx + dy * dy), 4);
+  
+  // Verificar que la distancia sea válida
+  assert(isFinite(distance), `Distancia con valor no válido: ${distance}`);
   
   // Evitar división por cero
-  if (distance === 0) return { angle: item.currentAngle };
+  if (distance === 0) {
+    return {
+      angle: fixPrecision(item.currentAngle || 0, 6),
+      lengthFactor: 1 // Factor neutro para mantener consistencia en los renderizadores
+    };
+  }
   
-  // Calcular la fuerza del vórtice basada en la distancia
-  const swirl = strength / Math.pow(distance, radiusFalloff / 10);
+  // Calcular la fuerza del vórtice basada en la distancia con precisión controlada
+  const radiusFactor = fixPrecision(radiusFalloff / 10, 4);
+  const denominator = fixPrecision(Math.pow(distance, radiusFactor), 4);
+  const swirl = fixPrecision(strength / denominator, 4);
   
-  // Calcular el ángulo tangencial al centro
-  const baseAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+  // Calcular el ángulo tangencial al centro con precisión controlada
+  // Nota: Mantenemos el resultado en radianes para mayor precisión
+  const baseAngleRad = fixPrecision(Math.atan2(dy, dx), 6);
+  const baseAngle = fixPrecision(baseAngleRad * (180 / Math.PI), 4);
   
   // Añadir o restar 90 grados dependiendo de la dirección del remolino
   const tangentOffset = swirlDirection === 'clockwise' ? 90 : -90;
-  const angle = baseAngle + tangentOffset;
+  const angle = fixPrecision(baseAngle + tangentOffset, 4);
   
-  // Factor de longitud inverso a la distancia (opcional)
-  const lengthFactor = 1 + (swirl * 2);
+  // Factor de longitud inverso a la distancia con precisión controlada
+  const lengthFactor = fixPrecision(1 + (swirl * 2), 4);
+  
+  // Verificar que los valores calculados son válidos
+  assert(isFinite(angle), `Ángulo con valor no válido: ${angle}`);
+  assert(isFinite(lengthFactor) && lengthFactor > 0, `Factor de longitud no válido: ${lengthFactor}`);
   
   return { 
     angle,
@@ -107,16 +142,51 @@ export const calculateFlocking = (
     targetY
   } = props;
   
-  // Inicializar el estado de animación si no existe
+  // Inicializar el estado de animación si no existe, con precisión controlada
   if (!item.animationState) {
-    item.animationState = {
-      velocityX: Math.cos(item.currentAngle * (Math.PI / 180)) * 0.1,
-      velocityY: Math.sin(item.currentAngle * (Math.PI / 180)) * 0.1
-    } as FlockingAnimationState;
+    // Convertir ángulo a radianes para mayor precisión
+    const angleRad = fixPrecision((item.currentAngle || 0) * (Math.PI / 180), 6);
+    const velocityX = fixPrecision(Math.cos(angleRad) * 0.1, 4);
+    const velocityY = fixPrecision(Math.sin(angleRad) * 0.1, 4);
+    
+    // Crear el estado con el tipo correcto
+    const initialState: FlockingAnimationState = {
+      velocityX,
+      velocityY,
+      lastNeighborIds: []
+    };
+    
+    // Asignar el estado tipado
+    item.animationState = initialState as unknown as Record<string, unknown>;
   }
   
-  // Obtenemos el estado actual
-  const state = item.animationState as FlockingAnimationState;
+  // Obtenemos el estado actual y lo tratamos como FlockingAnimationState para facilitar el acceso
+  // Primero verificamos que el estado contenga las propiedades necesarias
+  assert(item.animationState && 
+         typeof item.animationState.velocityX === 'number' && 
+         typeof item.animationState.velocityY === 'number',
+         'El estado de animación debe contener velocityX y velocityY como números');
+         
+  // Convertir el estado de animación al tipo correcto con validación
+  const state = item.animationState as unknown as FlockingAnimationState;
+  
+  // Validar que las propiedades requeridas existen y son del tipo correcto
+  if (state === undefined || state === null) {
+    throw new Error('El estado de animación no está definido');
+  }
+  
+  if (typeof state.velocityX !== 'number' || typeof state.velocityY !== 'number') {
+    throw new Error('El estado de animación no tiene las propiedades velocityX o velocityY correctamente definidas');
+  }
+  
+  // Asegurar precisión en los valores de velocidad
+  state.velocityX = fixPrecision(state.velocityX, 4);
+  state.velocityY = fixPrecision(state.velocityY, 4);
+  
+  // Inicializar lastNeighborIds si no existe
+  if (!state.lastNeighborIds) {
+    state.lastNeighborIds = [];
+  }
   
   // Encontrar vectores vecinos dentro del radio de percepción
   const neighbors: AnimatedVectorItem[] = [];
@@ -126,11 +196,15 @@ export const calculateFlocking = (
     // Solo considerar vectores del mismo flockId si está definido
     if (item.flockId !== undefined && other.flockId !== item.flockId) continue;
     
-    const dx = other.baseX - item.baseX;
-    const dy = other.baseY - item.baseY;
-    const distSq = dx * dx + dy * dy;
+    // Calcular distancia con precisión controlada
+    const dx = fixPrecision(other.baseX - item.baseX, 2);
+    const dy = fixPrecision(other.baseY - item.baseY, 2);
+    const distSq = fixPrecision(dx * dx + dy * dy, 4);
     
-    if (distSq < perceptionRadius * perceptionRadius) {
+    // Usar el cuadrado de la distancia para comparaciones por eficiencia
+    const radiusSq = fixPrecision(perceptionRadius * perceptionRadius, 4);
+    
+    if (distSq < radiusSq) {
       neighbors.push(other);
     }
   }
@@ -144,15 +218,16 @@ export const calculateFlocking = (
   // 1. Separación: evitar otros boids cercanos
   if (separationForce > 0) {
     for (const other of neighbors) {
-      const dx = item.baseX - other.baseX;
-      const dy = item.baseY - other.baseY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Cálculo de separación con precisión controlada
+      const dx = fixPrecision(item.baseX - other.baseX, 2);
+      const dy = fixPrecision(item.baseY - other.baseY, 2);
+      const dist = fixPrecision(Math.sqrt(dx * dx + dy * dy), 4);
       
       if (dist > 0) {
         // La fuerza es inversamente proporcional a la distancia
-        const factor = separationForce / dist;
-        separationX += dx * factor;
-        separationY += dy * factor;
+        const factor = fixPrecision(separationForce / dist, 4);
+        separationX = fixPrecision(separationX + dx * factor, 4);
+        separationY = fixPrecision(separationY + dy * factor, 4);
       }
     }
   }
@@ -163,16 +238,18 @@ export const calculateFlocking = (
       let avgVelX = 0, avgVelY = 0;
       
       for (const other of neighbors) {
-        // Usar el ángulo actual como dirección
-        avgVelX += Math.cos(other.currentAngle * (Math.PI / 180));
-        avgVelY += Math.sin(other.currentAngle * (Math.PI / 180));
+        // Usar el ángulo actual como dirección con precisión controlada
+        const angleRad = fixPrecision((other.currentAngle || 0) * (Math.PI / 180), 6);
+        avgVelX = fixPrecision(avgVelX + Math.cos(angleRad), 4);
+        avgVelY = fixPrecision(avgVelY + Math.sin(angleRad), 4);
       }
       
-      avgVelX /= neighbors.length;
-      avgVelY /= neighbors.length;
+      // Calcular alineación promedio con precisión controlada
+      avgVelX = fixPrecision(avgVelX / neighbors.length, 4);
+      avgVelY = fixPrecision(avgVelY / neighbors.length, 4);
       
-      alignmentX = avgVelX * alignmentForce;
-      alignmentY = avgVelY * alignmentForce;
+      alignmentX = fixPrecision(avgVelX * alignmentForce, 4);
+      alignmentY = fixPrecision(avgVelY * alignmentForce, 4);
     }
     
     // 3. Cohesión: moverse hacia el centro de masa de los vecinos
@@ -180,46 +257,76 @@ export const calculateFlocking = (
       let centerX = 0, centerY = 0;
       
       for (const other of neighbors) {
-        centerX += other.baseX;
-        centerY += other.baseY;
+        // Acumular posiciones con precisión controlada
+        centerX = fixPrecision(centerX + other.baseX, 2);
+        centerY = fixPrecision(centerY + other.baseY, 2);
       }
       
-      centerX /= neighbors.length;
-      centerY /= neighbors.length;
+      // Calcular centro de masa con precisión controlada
+      centerX = fixPrecision(centerX / neighbors.length, 2);
+      centerY = fixPrecision(centerY / neighbors.length, 2);
       
-      cohesionX = (centerX - item.baseX) * cohesionForce * 0.01;
-      cohesionY = (centerY - item.baseY) * cohesionForce * 0.01;
+      // Calcular fuerza de cohesión con precisión controlada
+      const cohesionScale = fixPrecision(cohesionForce * 0.01, 4);
+      cohesionX = fixPrecision((centerX - item.baseX) * cohesionScale, 4);
+      cohesionY = fixPrecision((centerY - item.baseY) * cohesionScale, 4);
     }
   }
   
   // 4. Buscar objetivo (opcional)
   if (targetSeekingForce && targetX !== undefined && targetY !== undefined) {
-    const dx = targetX - item.baseX;
-    const dy = targetY - item.baseY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Calcular fuerza de búsqueda de objetivo con precisión controlada
+    const dx = fixPrecision(targetX - item.baseX, 2);
+    const dy = fixPrecision(targetY - item.baseY, 2);
+    const dist = fixPrecision(Math.sqrt(dx * dx + dy * dy), 4);
     
     if (dist > 0) {
-      targetX_force = dx * targetSeekingForce * 0.01;
-      targetY_force = dy * targetSeekingForce * 0.01;
+      const seekScale = fixPrecision(targetSeekingForce * 0.01, 4);
+      targetX_force = fixPrecision(dx * seekScale, 4);
+      targetY_force = fixPrecision(dy * seekScale, 4);
     }
   }
   
-  // Actualizar velocidad basada en las fuerzas
-  state.velocityX += separationX + alignmentX + cohesionX + targetX_force;
-  state.velocityY += separationY + alignmentY + cohesionY + targetY_force;
+  // Actualizar velocidad basada en las fuerzas con precisión controlada
+  const totalForceX = fixPrecision(separationX + alignmentX + cohesionX + targetX_force, 4);
+  const totalForceY = fixPrecision(separationY + alignmentY + cohesionY + targetY_force, 4);
   
-  // Limitar velocidad máxima
-  const speed = Math.sqrt(state.velocityX * state.velocityX + state.velocityY * state.velocityY);
+  // Actualizar las velocidades directamente en el estado
+  state.velocityX = fixPrecision(state.velocityX + totalForceX, 4);
+  state.velocityY = fixPrecision(state.velocityY + totalForceY, 4);
+  
+  // Verificar que la velocidad es válida
+  assert(isFinite(state.velocityX) && isFinite(state.velocityY), 
+         `Velocidad con valores no válidos: (${state.velocityX}, ${state.velocityY})`);
+  
+  // Limitar velocidad máxima con precisión controlada
+  const velX = state.velocityX;
+  const velY = state.velocityY;
+  
+  let speedSq = fixPrecision(velX * velX + velY * velY, 4);
+  let speed = fixPrecision(Math.sqrt(speedSq), 4);
+  
   if (speed > maxSpeed) {
-    state.velocityX = (state.velocityX / speed) * maxSpeed;
-    state.velocityY = (state.velocityY / speed) * maxSpeed;
+    const factor = fixPrecision(maxSpeed / speed, 4);
+    state.velocityX = fixPrecision(velX * factor, 4);
+    state.velocityY = fixPrecision(velY * factor, 4);
+    
+    // Recalcular la velocidad después de aplicar el límite
+    speedSq = fixPrecision(state.velocityX * state.velocityX + state.velocityY * state.velocityY, 4);
+    speed = fixPrecision(Math.sqrt(speedSq), 4);
   }
   
-  // Calcular el nuevo ángulo basado en la velocidad
-  const angle = Math.atan2(state.velocityY, state.velocityX) * (180 / Math.PI);
+  // Calcular el nuevo ángulo basado en la velocidad con precisión controlada
+  const angleRad = fixPrecision(Math.atan2(state.velocityY, state.velocityX), 6);
+  const angle = fixPrecision(angleRad * (180 / Math.PI), 4);
   
-  // El factor de longitud podría estar basado en la velocidad
-  const lengthFactor = 1 + (speed / maxSpeed) * 0.5;
+  // El factor de longitud basado en la velocidad con precisión controlada
+  const speedRatio = fixPrecision(speed / maxSpeed, 4);
+  const lengthFactor = fixPrecision(1 + speedRatio * 0.5, 4);
+  
+  // Verificar que los valores calculados son válidos
+  assert(isFinite(angle), `Ángulo con valor no válido: ${angle}`);
+  assert(isFinite(lengthFactor) && lengthFactor > 0, `Factor de longitud no válido: ${lengthFactor}`);
   
   return {
     angle,

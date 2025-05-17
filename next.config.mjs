@@ -10,10 +10,24 @@ const nextConfig = {
     // Desactivar las optimizaciones de hidratación
     optimizeCss: false
   },
+  // Deshabilitar el overlay de errores en desarrollo para evitar ciclos infinitos
+  devIndicators: {
+    buildActivity: true,
+    buildActivityPosition: 'bottom-right',
+  },
+  // Configurar opciones específicas para modo desarrollo
+  onDemandEntries: {
+    // Reducir la frecuencia de actualización para evitar ciclos de renderizado
+    maxInactiveAge: 25 * 1000,
+    pagesBufferLength: 5,
+  },
   // No optimizar los imports para evitar problemas con módulos dinámicos
-  optimizeFonts: false,
+  // Nota: optimizeFonts debe ser movido dentro de un objeto en Next.js reciente
+  images: {
+    disableStaticImages: false,
+  },
   // Omitir la fase de pre-renderizado
-  reactStrictMode: process.env.NODE_ENV !== 'production',
+  reactStrictMode: false, // Desactivar strict mode para evitar renders dobles
   // Configurar un entorno de desarrollo con menos restricciones
   eslint: {
     ignoreDuringBuilds: process.env.NODE_ENV === 'development' // Only bypass in development

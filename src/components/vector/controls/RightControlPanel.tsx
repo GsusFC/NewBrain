@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea'; // Para userSvgString
 import { GridControls } from './grid/GridControls';
 
 // Definiciones de tipos específicos para callbacks
-type PropsChangeHandler = (newValues: Partial<VectorGridProps>) => void;
+type PropsChangeHandler = (newValues: Partial<VectorGridProps> | ((prev: VectorGridProps) => VectorGridProps)) => void;
 type GridSettingsChangeHandler = (newGridSettings: Partial<GridSettings>) => void;
 type VectorSettingsChangeHandler = (newVectorSettings: Partial<VectorSettings>) => void;
 
@@ -29,14 +29,20 @@ interface RightControlPanelProps {
 // Helper para manejar cambios de propiedades de vectores
 const handleVectorChange = (
   propName: keyof VectorSettings, 
-  value: string | number | boolean, // Tipos más específicos para las propiedades de vectores
+  value: string | number | boolean,
   onVectorSettingsChange?: VectorSettingsChangeHandler, 
   onPropsChange?: PropsChangeHandler
 ) => {
   if (onVectorSettingsChange) {
     onVectorSettingsChange({ [propName]: value });
   } else if (onPropsChange) {
-    onPropsChange({ vectorSettings: { [propName]: value } });
+    onPropsChange((prev) => ({
+      ...prev,
+      vectorSettings: {
+        ...prev.vectorSettings,
+        [propName]: value
+      }
+    }));
   }
 };
 
@@ -51,7 +57,13 @@ const handleVectorSliderChange = (
     if (onVectorSettingsChange) {
       onVectorSettingsChange({ [propName]: value[0] });
     } else if (onPropsChange) {
-      onPropsChange({ vectorSettings: { [propName]: value[0] } });
+      onPropsChange((prev) => ({
+        ...prev,
+        vectorSettings: {
+          ...prev.vectorSettings,
+          [propName]: value[0]
+        }
+      }));
     }
   }
 };
@@ -80,7 +92,7 @@ export function RightControlPanel({
   } = vectorSettings;
 
   return (
-    <ScrollArea className="h-full w-full">
+    <ScrollArea className="h-full w-full" data-component-name="RightControlPanel">
       <div className="p-4 space-y-6">
         <h3 className="text-xl font-semibold tracking-tight text-center">Configuración del Grid</h3>
         <Separator />
@@ -116,11 +128,8 @@ export function RightControlPanel({
                   { value: 'line', label: 'Línea' },
                   { value: 'dot', label: 'Punto' },
                   { value: 'triangle', label: 'Triángulo' },
-                  { value: 'circle', label: 'Círculo' },
                   { value: 'semicircle', label: 'Semicírculo' },
                   { value: 'curve', label: 'Curva' },
-                  { value: 'rectangle', label: 'Rectángulo' },
-                  { value: 'plus', label: 'Cruz' },
                   { value: 'userSvg', label: 'SVG' }
                 ]}
                 size="sm"
@@ -141,15 +150,23 @@ export function RightControlPanel({
               </div>
             )}
 
-            <div className="space-y-3">
-              <Label className="font-medium text-xs">Longitud (px)</Label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="font-medium text-xs">Longitud</Label>
+                <span className="text-xs text-muted-foreground">
+                  {typeof vectorLength === 'number' ? vectorLength : 30}px
+                </span>
+              </div>
               <SliderWithInput 
                 value={[typeof vectorLength === 'number' ? vectorLength : 30]} 
                 max={600} 
                 min={1} 
-                step={1} 
-                precision={0} 
-                onValueChange={(val) => handleVectorSliderChange('vectorLength', val, onVectorSettingsChange, onPropsChange)} 
+                step={1}
+                precision={0}
+                aria-label="Longitud del vector en píxeles"
+                onValueChange={(val) => handleVectorSliderChange('vectorLength', val, onVectorSettingsChange, onPropsChange)}
+                className="mt-1"
+                inputClassName="w-16 text-sm"
               />
             </div>
             
@@ -179,15 +196,23 @@ export function RightControlPanel({
               )}
             </div>
 
-            <div className="space-y-3">
-              <Label className="font-medium text-xs">Grosor (px)</Label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="font-medium text-xs">Grosor</Label>
+                <span className="text-xs text-muted-foreground">
+                  {typeof vectorWidth === 'number' ? vectorWidth.toFixed(1) : '2.0'}px
+                </span>
+              </div>
               <SliderWithInput 
                 value={[typeof vectorWidth === 'number' ? vectorWidth : 2]} 
                 max={50} 
                 min={0.1} 
-                step={0.1} 
-                precision={1} 
-                onValueChange={(val) => handleVectorSliderChange('vectorWidth', val, onVectorSettingsChange, onPropsChange)} 
+                step={0.1}
+                precision={1}
+                aria-label="Grosor del vector en píxeles"
+                onValueChange={(val) => handleVectorSliderChange('vectorWidth', val, onVectorSettingsChange, onPropsChange)}
+                className="mt-1"
+                inputClassName="w-16 text-sm"
               />
             </div>
             

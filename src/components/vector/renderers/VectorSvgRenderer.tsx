@@ -9,15 +9,9 @@ import {
   GradientConfig, 
   VectorRenderProps 
 } from '../core/types';
-import { formatSvgPoint, fixTransformPrecision } from '@/utils/precision';
+import { formatSvgPoint, fixPrecision } from '@/utils/precision';
 import { ensureSafeNumber } from '../utils/mathUtils';
 import { applyCulling } from '../core/culling';
-
-// Función auxiliar para formatear números con precisión fija
-const fixPrecision = (value: number, precision: number = 2): number => {
-  const factor = Math.pow(10, precision);
-  return Math.round(value * factor) / factor;
-};
 
 // Interfaz para las opciones de culling
 interface CullingOptions {
@@ -79,14 +73,7 @@ const getRotationOffset = (origin: 'start' | 'center' | 'end', length: number): 
 
 interface ParsedViewBox { x: number; y: number; width: number; height: number; }
 
-// Función de utilidad para garantizar valores numéricos seguros para atributos SVG
-const ensureSafeNumber = (value: unknown, defaultValue: number = 0): number => {
-  if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
-    // Usar fixPrecision para garantizar consistencia de valores entre servidor y cliente
-    return fixPrecision(value);
-  }
-  return defaultValue;
-};
+// La función ensureSafeNumber ahora se importa desde mathUtils
 
 const parseViewBox = (svgString?: string): ParsedViewBox | null => {
   if (!svgString) return null;
@@ -354,7 +341,8 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
               cy={0} 
               r={ensureSafeNumber(radius, 5)} 
               fill={fillOrStrokeColor} 
-              stroke="none" 
+              stroke="none"
+              data-vectorid={item.id}
             />
           </g>
         );
@@ -365,6 +353,7 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
               points={`${ensureSafeNumber(actualLength)},0 0,${ensureSafeNumber(-actualStrokeWidth)} 0,${ensureSafeNumber(actualStrokeWidth)}`} 
               fill={fillOrStrokeColor}
               stroke="none"
+              data-vectorid={item.id}
             />
           </g>
         );
@@ -375,9 +364,10 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
         return (
           <g key={item.id || index} transform={groupTransform}>
             <path
-              d={`M ${fixPrecision(-radius)},0 A ${fixPrecision(radius)},${fixPrecision(radius)} 0 0 1 ${fixPrecision(radius)},0`}
+              d={`M ${fixPrecision(-radius, 5)},0 A ${fixPrecision(radius, 5)},${fixPrecision(radius, 5)} 0 0 1 ${fixPrecision(radius, 5)},0`}
               fill={fillOrStrokeColor}
               stroke="none"
+              data-vectorid={item.id}
             />
           </g>
         );
@@ -390,11 +380,12 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
         return (
           <g key={item.id || index} transform={groupTransform}>
             <path 
-              d={`M 0 0 Q ${fixPrecision(actualLength/2)} ${fixPrecision(controlY)} ${fixPrecision(actualLength)} 0`} 
+              d={`M 0 0 Q ${fixPrecision(actualLength/2, 5)} ${fixPrecision(controlY, 5)} ${fixPrecision(actualLength, 5)} 0`} 
               stroke={fillOrStrokeColor}
               fill="none"
               strokeWidth={ensureSafeNumber(actualStrokeWidth)}
               strokeLinecap={baseStrokeLinecap || 'butt'}
+              data-vectorid={item.id}
             />
           </g>
         );
@@ -507,9 +498,7 @@ const VectorSvgRenderer: React.FC<VectorSvgRendererProps> = (props) => {
       }}
     >
       {/* Definiciones de gradientes */}
-      <defs>
-        {defsContent}
-      </defs>
+      {defsContent}
 
       {/* Fondo si es necesario */}
       {props.backgroundColor && (

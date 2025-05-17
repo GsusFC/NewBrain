@@ -1,38 +1,51 @@
 "use client"
 
 import * as React from "react"
-import * as SwitchPrimitive from "@radix-ui/react-switch"
-
+import { Switch as HeadlessSwitch, type SwitchProps as HeadlessSwitchProps } from "./switch-headless"
 import { cn } from "@/lib/utils"
 
-type SwitchProps = React.ComponentProps<typeof SwitchPrimitive.Root> & {
-  variant?: "pill" | "rectangular"
-}
+// Re-exportar tipos para mantener la compatibilidad
+export type { HeadlessSwitchProps as SwitchProps }
 
-function Switch({
-  className,
-  variant = "pill",
-  ...props
-}: SwitchProps) {
-  return (
-    <SwitchPrimitive.Root
-      data-slot="switch"
-      className={cn(
-        "peer data-[state=checked]:bg-primary data-[state=unchecked]:bg-input focus-visible:border-ring focus-visible:ring-ring/50 dark:data-[state=unchecked]:bg-input/80 inline-flex h-6 w-11 shrink-0 items-center border-2 border-transparent shadow-sm transition-all outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "pill" ? "rounded-full" : "rounded-md",
-        className
-      )}
-      {...props}
-    >
-      <SwitchPrimitive.Thumb
-        data-slot="switch-thumb"
+/**
+ * Switch - Componente de interruptor con estilos predefinidos
+ * 
+ * Este componente envuelve HeadlessSwitch añadiendo estilos específicos.
+ * Para un control total, usa directamente HeadlessSwitch.
+ */
+const Switch = React.forwardRef<HTMLButtonElement, HeadlessSwitchProps>(
+  ({ className, variant = "pill", ...props }, ref) => {
+    return (
+      <HeadlessSwitch
+        ref={ref}
+        variant={variant}
         className={cn(
-          "bg-background dark:data-[state=unchecked]:bg-foreground dark:data-[state=checked]:bg-primary-foreground pointer-events-none block h-5 w-5 shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
-          variant === "pill" ? "rounded-full" : "rounded-sm"
+          "peer inline-flex h-6 w-11 shrink-0 items-center border-2 border-transparent shadow-sm transition-all duration-300 outline-none",
+          "data-[state=checked]:bg-primary data-[state=unchecked]:bg-input/80",
+          "data-[state=unchecked]:hover:bg-input/90 data-[state=checked]:hover:bg-primary/90",
+          "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-1",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          variant === "pill" ? "rounded-full" : "rounded-md",
+          className
         )}
-      />
-    </SwitchPrimitive.Root>
-  )
-}
+        {...props}
+      >
+        {({ checked }) => (
+          <span
+            data-slot="switch-thumb"
+            className={cn(
+              "pointer-events-none block h-5 w-5 shadow-lg ring-0 transition-all duration-300 ease-in-out",
+              checked ? "bg-primary-foreground" : "bg-foreground",
+              checked ? "translate-x-5" : "translate-x-0",
+              checked ? "scale-90" : "scale-100",
+              variant === "pill" ? "rounded-full" : "rounded-sm"
+            )}
+          />
+        )}
+      </HeadlessSwitch>
+    )
+  }
+)
+Switch.displayName = "Switch"
 
 export { Switch }

@@ -1,29 +1,29 @@
 'use client';
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { VectorGrid } from './VectorGrid';
-import { useGridContainer } from '@/hooks/vector/useGridContainer';
-import type { AspectRatioOption } from '@/hooks/vector/useContainerDimensions';
-// Importamos todos los tipos necesarios, incluida la referencia de VectorGrid
-import type { 
-  VectorGridProps, 
-  GridSettings, 
-  VectorSettings, 
-  VectorGridRef 
-} from './core/types';
 import { LeftControlPanel } from './controls/LeftControlPanel';
 import { RightControlPanel } from './controls/RightControlPanel';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+import type { VectorGridProps, VectorGridRef, AspectRatioOption, GridSettings, VectorSettings, AnimationType } from './core/types';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { ClientOnly } from '@/components/ClientOnly';
+// import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // <- mantener comentado hasta que se use
+
+// Importar el hook de dimensiones actualizado
+import { useGridDimensions } from '@/hooks/vector/useGridDimensions';
+import { VectorControlProvider } from './controls/VectorControlContext';
 
 // Los valores iniciales se han configurado para un resultado visual interesante por defecto
 // Extendemos VectorGridProps para incluir una key que nos ayude a forzar la reconstrucción del componente
-interface ExtendedVectorGridProps extends VectorGridProps {
+interface UseVectorGridProps extends VectorGridProps {
   key?: string;
 }
 
-const INITIAL_GRID_PROPS: ExtendedVectorGridProps = {
+// Usamos el componente ClientOnly importado desde @/components/ClientOnly
+
+const INITIAL_GRID_PROPS: UseVectorGridProps = {
   gridSettings: {
     rows: 12,
     cols: 18,
@@ -38,8 +38,8 @@ const INITIAL_GRID_PROPS: ExtendedVectorGridProps = {
     strokeLinecap: 'round' as const,
     rotationOrigin: 'center' as const
   },
-  backgroundColor: 'bg-background',
-  animationType: 'smoothWaves',
+  backgroundColor: '#0a0a0a', // Valor oscuro equivalente a bg-background
+  animationType: 'smoothWaves' as AnimationType,
   animationProps: {
     waveFrequency: 0.00025,
     waveAmplitude: 30
@@ -57,21 +57,30 @@ const INITIAL_GRID_PROPS: ExtendedVectorGridProps = {
   customAspectRatio: { width: 16, height: 9 }
 };
 
-
-
-export default function VectorPlayground() {
-  const [gridProps, setGridProps] = useState<ExtendedVectorGridProps>(INITIAL_GRID_PROPS);
+// Evitamos recrear innecesariamente el objeto de props completo
+const VectorPlayground = () => {
+  // Definir un estado para las props del grid y un componente key para forzar re-renderizados completos
+  const [gridProps, setGridProps] = useState<UseVectorGridProps>({ ...INITIAL_GRID_PROPS });
   const vectorGridRef = useRef<VectorGridRef>(null);
   
-  // Usar nuestro nuevo hook para gestionar el contenedor y sus dimensiones
-  const { containerRef, containerSize, calculateOptimalGrid } = useGridContainer();
+  // Usar nuestro hook optimizado para gestionar las dimensiones del grid y su centrado
+  const containerRef = useRef<HTMLDivElement>(null);
+  const activeElementRef = useRef<Element | null>(null);
+  
+  // useGridDimensions para calcular dimensiones efectivas y offsets para centrado
+  const gridDimensions = useGridDimensions({
+    containerRef,
+    aspectRatio: gridProps.aspectRatio as AspectRatioOption,
+    margin: gridProps.gridSettings?.margin || 20,
+    customAspectRatio: gridProps.customAspectRatio,
+    debug: false // Activar solo para diagnóstico
+  });
   
   // Estado para indicar recálculo de la cuadrícula
   const [isRecalculating, setIsRecalculating] = useState(false);
   
   // Referencia para el elemento que podría tener el foco cuando se presiona espacio
   // Evita activar la pausa si el usuario está escribiendo en un input
-  const activeElementRef = useRef<Element | null>(null);
   
   // Estado para el efecto de fade al pausar/reanudar
   const [fade, setFade] = useState(1);
@@ -81,18 +90,60 @@ export default function VectorPlayground() {
     setFade(gridProps.isPaused ? 0.7 : 1);
   }, [gridProps.isPaused]);
 
-  // Modificamos la función para usar el nuevo hook que utiliza dimensiones reales
-  const calculateOptimalGridDimensions = useCallback((aspectRatio: string, spacing: number, customAspectRatio?: { width: number; height: number }) => {
-    // Usar el nuevo método que utiliza dimensiones reales del contenedor
-    return calculateOptimalGrid(
-      aspectRatio as AspectRatioOption, 
-      spacing, 
-      customAspectRatio
-    );
-  }, [calculateOptimalGrid]);
+  // Calculamos las dimensiones óptimas basadas en el aspect ratio y el contenedor
+  const calculateOptimalGridDimensions = useCallback((
+    aspectRatio: AspectRatioOption,
+    spacing: number,
+    customAspectRatio?: { width: number; height: number }
+  ) => {
+    if (!gridProps.gridSettings) return null;
+    
+    // Validación de entradas
+    if (!containerRef.current) return null;
+    
+    const containerWidth = containerRef.current.clientWidth;
+    const containerHeight = containerRef.current.clientHeight;
+    
+    if (containerWidth < 100 || containerHeight < 100) return null;
+    
+    // Para calcular las filas y columnas óptimas ahora usamos una lógica simple
+    // basada en el espacio disponible y el espaciado
+    const availableWidth = containerWidth - (gridProps.gridSettings.margin * 2);
+    const availableHeight = containerHeight - (gridProps.gridSettings.margin * 2);
+    
+    let cols = Math.floor(availableWidth / spacing);
+    let rows = Math.floor(availableHeight / spacing);
+    
+    if (rows <= 0 || cols <= 0) return null;
+    
+    // Respetar el aspect ratio solicitado si se proporciona
+    if (aspectRatio !== 'auto') {
+      let targetRatio: number;
+      
+      if (aspectRatio === 'custom') {
+        targetRatio = (customAspectRatio?.width ?? 16) / (customAspectRatio?.height ?? 9);
+      } else if (aspectRatio === '1:1') {
+        targetRatio = 1;
+      } else if (aspectRatio === '2:1') {
+        targetRatio = 2;
+      } else { // '16:9'
+        targetRatio = 16/9;
+      }
+      
+      // Corrección simple: ajustar la dimensión más grande
+      const currentRatio = cols / rows;
+      if (currentRatio > targetRatio) {
+        cols = Math.floor(rows * targetRatio);
+      } else {
+        rows = Math.floor(cols / targetRatio);
+      }
+    }
+    
+    return { rows, cols, spacing };
+  }, [containerRef, gridProps.gridSettings]);
 
   // Función para manejar las propiedades de animación
-  const mergeAnimationProps = useCallback((prev: ExtendedVectorGridProps, newValues: Partial<ExtendedVectorGridProps>) => {
+  const mergeAnimationProps = useCallback((prev: UseVectorGridProps, newValues: Partial<UseVectorGridProps>) => {
     if (newValues.animationProps && prev.animationProps) {
       return {
         ...prev,
@@ -106,8 +157,8 @@ export default function VectorPlayground() {
     return { ...prev, ...newValues };
   }, []);
 
-  // Callback general para actualizar props. Los paneles podrían filtrar qué envían.
-  const handlePropsChange = useCallback((newValues: Partial<ExtendedVectorGridProps>) => {
+  // useCallback para modificaciones de props - esto nos permite mantener la referencia estable
+  const handlePropsChange = useCallback((newValues: Partial<UseVectorGridProps>) => {
     setGridProps(prev => {
       // Manejo especial para fusionar animationProps si existen en ambos
       if (newValues.animationProps && prev.animationProps) {
@@ -119,11 +170,19 @@ export default function VectorPlayground() {
         // Si cambia el aspect ratio y NO hay cambio explícito de gridSettings
         if (!newValues.gridSettings) {
           const spacing = prev.gridSettings?.spacing || 30;
-          const { rows, cols } = calculateOptimalGridDimensions(
+          // Protección contra resultado undefined
+          const result = calculateOptimalGridDimensions(
             newValues.aspectRatio, 
             spacing, 
             newValues.customAspectRatio || prev.customAspectRatio
           );
+          
+          // Si no hay resultado, mantener los valores actuales
+          if (!result) {
+            return { ...prev, ...newValues };
+          }
+          
+          const { rows, cols } = result;
           
           // Actualizar gridSettings con los nuevos valores calculados
           return {
@@ -173,30 +232,42 @@ export default function VectorPlayground() {
     vectorGridRef.current?.triggerPulse();
   }, []);
   
+  // Handler para reconstruir completamente el grid (cambia la key para forzar destrucción y recreación completa)
+  const handleRebuildGrid = useCallback(() => {
+    setGridProps(prevProps => ({
+      ...prevProps as UseVectorGridProps, // Asegurar que el tipo es correcto
+      key: Math.random().toString(36).substring(2, 9) // Generar una nueva key aleatoria
+    }));
+  }, []);
+
   // Toggle de pausa con la barra espaciadora
   const togglePause = useCallback(() => {
     handlePropsChange({ isPaused: !gridProps.isPaused });
   }, [gridProps.isPaused, handlePropsChange]);
   
-  // Event listener para detectar la barra espaciadora
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Guardar el elemento activo cuando se presiona una tecla
-      activeElementRef.current = document.activeElement;
+  // Handler para la tecla espacio (pausa)
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Actualizar la referencia al elemento activo
+    activeElementRef.current = document.activeElement;
+    
+    // Solo activar si la tecla es espacio y no está enfocado un input, textarea o elemento similar
+    if (e.code === 'Space' && activeElementRef.current) {
+      const tagName = (activeElementRef.current as HTMLElement).tagName.toLowerCase();
+      const isEditable = (activeElementRef.current as HTMLElement).isContentEditable;
       
-      // Solo activar si la tecla es espacio y no está enfocado un input, textarea o elemento similar
-      if (e.code === 'Space' && activeElementRef.current) {
-        const tagName = (activeElementRef.current as HTMLElement).tagName.toLowerCase();
-        const isEditable = (activeElementRef.current as HTMLElement).isContentEditable;
-        
-        // Verificar que no estemos en un campo editable
-        if (!['input', 'textarea', 'select', 'button'].includes(tagName) && !isEditable) {
-          e.preventDefault();  
+      // Verificar que no estemos en un campo editable
+      if (!['input', 'textarea', 'select', 'button'].includes(tagName) && !isEditable) {
+        e.preventDefault();  
 
-          togglePause();
-        }
+        togglePause();
       }
-    };
+    }
+  }, [togglePause]);
+  
+  // Efecto para manejar la pausa con la tecla espacio
+  useEffect(() => {
+    // Obtener el elemento activo para verificar si debemos activar el shortcut
+    activeElementRef.current = document.activeElement;
     
     // Añadir event listener global
     window.addEventListener('keydown', handleKeyDown);
@@ -205,58 +276,139 @@ export default function VectorPlayground() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [togglePause]);
+  }, [handleKeyDown]);
 
-  // Añadir un efecto para recalcular la grid cuando cambie el tamaño del contenedor
+  // Usamos useRef para trackear el último cálculo y evitar actualizaciones innecesarias
+  const lastCalculationRef = useRef({
+    dimensions: { width: 0, height: 0 },
+    aspectRatio: null,
+    calculatedRows: 0,
+    calculatedCols: 0,
+    isFirstRun: true
+  });
+  
   useEffect(() => {
-    if (gridProps.aspectRatio && gridProps.aspectRatio !== 'auto' && containerSize.width > 10 && containerSize.height > 10) {
-      setIsRecalculating(true);
-      
-      const spacing = gridProps.gridSettings?.spacing || 30;
-      const { rows, cols } = calculateOptimalGridDimensions(
-        gridProps.aspectRatio,
-        spacing,
-        gridProps.customAspectRatio
-      );
-      
-      // Solo actualizar si las dimensiones han cambiado significativamente
-      if (
-        !gridProps.gridSettings?.rows || 
-        !gridProps.gridSettings?.cols ||
-        Math.abs(gridProps.gridSettings.rows - rows) > 1 ||
-        Math.abs(gridProps.gridSettings.cols - cols) > 2
-      ) {
-        handlePropsChange({
-          gridSettings: {
-            ...gridProps.gridSettings,
+    // No recalcular si usamos modo 'auto' que no necesita cálculos específicos de aspect ratio
+    if (gridProps.aspectRatio === 'auto' || 
+        gridDimensions.width <= 10 || 
+        gridDimensions.height <= 10) {
+      return;
+    }
+    
+    // Verificar si las dimensiones o el aspect ratio han cambiado significativamente
+    const dimensionsChanged = 
+      Math.abs(lastCalculationRef.current.dimensions.width - gridDimensions.width) > 20 ||
+      Math.abs(lastCalculationRef.current.dimensions.height - gridDimensions.height) > 20;
+    
+    const aspectRatioChanged = 
+      lastCalculationRef.current.aspectRatio !== gridProps.aspectRatio;
+    
+    // Ejecutar solo en el primer run o si han cambiado significativamente las dimensiones o el aspect ratio
+    if (!lastCalculationRef.current.isFirstRun && 
+        !dimensionsChanged && 
+        !aspectRatioChanged) {
+      return; // Evitar recálculos innecesarios
+    }
+    
+    // Indicamos que estamos recalculando (para UI feedback)
+    setIsRecalculating(true);
+    
+    // Usamos un timeout para romper el ciclo de renderizado y dar tiempo visual al estado
+    const timerId = setTimeout(() => {
+      try {
+        // Obtenemos los valores actuales de forma segura
+        const currentGridSettings = { ...gridProps.gridSettings };
+        const spacing = currentGridSettings?.spacing || 30;
+        
+        // Calculamos las dimensiones óptimas
+        const result = calculateOptimalGridDimensions(
+          gridProps.aspectRatio as AspectRatioOption,
+          spacing,
+          gridProps.customAspectRatio
+        );
+        
+        // Solo continuamos si el cálculo devolvió valores
+        if (!result || typeof result.rows !== 'number' || typeof result.cols !== 'number') {
+          setIsRecalculating(false);
+          return;
+        }
+        
+        const { rows, cols } = result;
+        
+        // Verificamos si hay un cambio significativo que merezca actualizar
+        const currentRows = currentGridSettings?.rows || 0;
+        const currentCols = currentGridSettings?.cols || 0;
+        
+        // Actualizar la referencia con el cálculo actual
+        lastCalculationRef.current = {
+          dimensions: { width: gridDimensions.width, height: gridDimensions.height },
+          aspectRatio: gridProps.aspectRatio,
+          calculatedRows: rows,
+          calculatedCols: cols,
+          isFirstRun: false
+        };
+        
+        // IMPORTANTE: Solo actualizar si hay cambios muy significativos
+        // para evitar bucles de renderizado infinitos
+        if (
+          !currentRows || 
+          !currentCols ||
+          Math.abs(currentRows - rows) > 2 ||
+          Math.abs(currentCols - cols) > 3
+        ) {
+          const newGridSettings = {
+            ...currentGridSettings,
             rows,
             cols
+          };
+          
+          // Usamos una comparación profunda para evitar actualizaciones innecesarias
+          if (JSON.stringify(newGridSettings) !== JSON.stringify(currentGridSettings)) {
+            // Usamos el callback de setState para asegurar el valor más reciente
+            setGridProps(prevProps => ({
+              ...prevProps,
+              gridSettings: newGridSettings
+            }));
           }
-        });
+        }
+      } catch (error) {
+        console.error('Error al recalcular grid:', error);
+      } finally {
+        // Quitamos el indicador de recálculo
+        setIsRecalculating(false);
       }
-      
-      // Pequeño retraso antes de quitar el indicador de recálculo
-      const timer = setTimeout(() => setIsRecalculating(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [containerSize, calculateOptimalGridDimensions, gridProps.aspectRatio, gridProps.customAspectRatio, gridProps.gridSettings, handlePropsChange]);
+    }, 100); // Aumentado a 100ms para dar más margen entre actualizaciones
+    
+    // Limpieza del timeout cuando el componente se desmonte o las dependencias cambien
+    return () => {
+      clearTimeout(timerId);
+      setIsRecalculating(false); // Asegurarnos de limpiar el estado
+    };
+  // IMPORTANTE: Solo incluimos las dependencias que realmente necesitamos
+  }, [gridDimensions.width, gridDimensions.height, calculateOptimalGridDimensions, gridProps.aspectRatio, gridProps.customAspectRatio]);
 
   return (
-    <div className="grid grid-cols-[300px_1fr_300px] lg:grid-cols-[360px_1fr_360px] w-full h-screen max-h-screen overflow-hidden bg-background text-foreground">
+    <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[300px_1fr_300px] xl:grid-cols-[360px_1fr_360px] w-full h-[100dvh] overflow-hidden bg-background/30">
       {/* Columna 1: Panel Izquierdo (Animaciones, Exportar, etc.) */}
-      <div className="border-r border-border overflow-auto bg-card/90">
-        <LeftControlPanel
-          currentProps={gridProps}
-          onPropsChange={handlePropsChange}
-          onAnimationSettingsChange={handleAnimationSettingsChange}
-          onTriggerPulse={handleTriggerPulse}
-        />
+      <div className="shadow-md md:shadow-inner md:shadow-r overflow-auto bg-card/95 backdrop-blur-sm order-1 md:order-1 transition-all">
+        <ClientOnly fallback={
+          <div className="p-4 flex justify-center items-center h-full">
+            <div className="animate-pulse">Cargando panel de control...</div>
+          </div>
+        }>
+          <LeftControlPanel
+            currentProps={gridProps}
+            onPropsChange={handlePropsChange}
+            onAnimationSettingsChange={handleAnimationSettingsChange}
+            onTriggerPulse={handleTriggerPulse}
+          />
+        </ClientOnly>
       </div>
       
       {/* Columna 2: Display Central */}
-      <div className="flex flex-col">
+      <div className="flex flex-col order-1 md:order-2 transition-all">
         {/* Menú Superior */}
-        <div className="h-14 border-b border-border bg-card/80 px-4 flex items-center justify-between">
+        <div className="h-14 shadow-sm bg-card/95 backdrop-blur-sm px-4 flex items-center justify-between sticky top-0 z-10 transition-all">
           <div className="flex items-center space-x-6">
             {/* Toggle Canvas/SVG */}
             <div className="flex items-center space-x-2">
@@ -306,7 +458,7 @@ export default function VectorPlayground() {
             <button 
               onClick={togglePause}
               className="p-2 rounded hover:bg-muted transition-colors group"
-              title={`${gridProps.isPaused ? "Reanudar" : "Pausar"} [Espacio]`}
+              title={gridProps.isPaused ? "Reanudar [Espacio]" : "Pausar [Espacio]"}
               aria-label={gridProps.isPaused ? "Reanudar animación" : "Pausar animación"}
               aria-pressed={gridProps.isPaused}
             >
@@ -319,13 +471,13 @@ export default function VectorPlayground() {
         </div>
         
         {/* Área Principal - Conectamos el ref del contenedor */}
-        <div className="flex-1 p-4 overflow-hidden" role="main">
+        <div className="flex-1 p-3 sm:p-4 overflow-hidden order-1 md:order-2 transition-all" role="main">
           <div 
             ref={containerRef}
-            className="w-full h-full bg-background rounded-lg overflow-hidden border border-muted"
+            className="w-full h-full bg-background rounded-lg overflow-hidden shadow-lg transition-shadow"
             aria-label="Animación de vectores"
             style={{
-              opacity: fade,
+              opacity: gridProps.isPaused ? 0.7 : 1,
               transition: 'opacity 0.3s cubic-bezier(.4,0,.2,1)',
               position: 'relative'
             }}
@@ -336,22 +488,42 @@ export default function VectorPlayground() {
                 Recalculando grid...
               </div>
             )}
-            {/* VectorGrid con renderizado optimizado */}
-            {useMemo(() => {
-              // Extraer key de forma estable
-              const gridKey = gridProps.key;
-              // Crear una copia limpia de las props sin key
-              const propsWithoutKey = { ...gridProps };
-              delete propsWithoutKey.key;
-              
-              return (
-                <VectorGrid 
-                  ref={vectorGridRef}
-                  key={gridKey}
-                  {...propsWithoutKey}
-                />
-              );
-            }, [gridProps])}
+            {/* Renderizamos condicionalmente con nuestro componente ClientOnly para evitar errores en SSR */}
+            <ClientOnly>
+              {useMemo(() => {
+                // Extraer key de forma estable
+                const gridKey = gridProps.key;
+                // Crear una copia limpia de las props sin key
+                const propsWithoutKey = { ...gridProps };
+                delete propsWithoutKey.key;
+                
+                return (
+                  <div 
+                    style={{
+                      position: 'absolute',
+                      left: gridDimensions.gridOffsetX,
+                      top: gridDimensions.gridOffsetY,
+                      width: gridDimensions.effectiveWidth,
+                      height: gridDimensions.effectiveHeight,
+                      // Para debug: mostrar un borde
+                      border: false ? '1px dashed rgba(255,255,255,0.2)' : 'none'
+                    }}
+                    className="vector-grid-positioned"
+                    data-dimensions={`${gridDimensions.effectiveWidth}x${gridDimensions.effectiveHeight}`}
+                    data-offset={`${Math.round(gridDimensions.gridOffsetX)}x${Math.round(gridDimensions.gridOffsetY)}`}
+                  >
+                    <VectorGrid 
+                      ref={vectorGridRef}
+                      key={gridKey}
+                      {...propsWithoutKey}
+                      width={gridDimensions.effectiveWidth}
+                      height={gridDimensions.effectiveHeight}
+                      containerFluid={false} // Forzar el uso de las dimensiones exactas
+                    />
+                  </div>
+                );
+              }, [gridProps, gridDimensions])}
+            </ClientOnly>
           </div>
         </div>
         
@@ -359,14 +531,31 @@ export default function VectorPlayground() {
       </div>
       
       {/* Columna 3: Panel Derecho (Grid Settings, Vector Settings) */}
-      <div className="border-l border-border overflow-auto bg-card/90">
-        <RightControlPanel 
-          currentProps={gridProps}
-          onPropsChange={handlePropsChange}
-          onGridSettingsChange={handleGridSettingsChange}
-          onVectorSettingsChange={handleVectorSettingsChange}
-        />
+      <div className="shadow-md md:shadow-inner md:shadow-l overflow-auto bg-card/95 backdrop-blur-sm order-3 md:order-3 transition-all">
+        <ClientOnly fallback={
+          <div className="p-4 flex justify-center items-center h-full">
+            <div className="animate-pulse">Cargando panel de configuración...</div>
+          </div>
+        }>
+          <RightControlPanel 
+            currentProps={gridProps}
+            onPropsChange={handlePropsChange}
+            onGridSettingsChange={handleGridSettingsChange}
+            onVectorSettingsChange={handleVectorSettingsChange}
+          />
+        </ClientOnly>
       </div>
     </div>
   );
-}
+};
+
+// Componente que envuelve VectorPlayground con el proveedor de contexto
+const VectorPlaygroundWithProvider = () => {
+  return (
+    <VectorControlProvider>
+      <VectorPlayground />
+    </VectorControlProvider>
+  );
+};
+
+export default VectorPlaygroundWithProvider;

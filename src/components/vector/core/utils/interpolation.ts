@@ -45,7 +45,10 @@ export const bilerp = (
  * @returns Valor normalizado (0-1)
  */
 export const normalize = (value: number, min: number, max: number): number => {
-  if (max === min) return 0.5;
+  if (max === min) {
+    console.warn("[interpolation.normalize] min and max are equal; returning 0.");
+    return 0;
+  }
   return (value - min) / (max - min);
 };
 
@@ -103,19 +106,35 @@ export const lerpAngle = (a: number, b: number, t: number): number => {
  * @returns Color interpolado (formato hex: #RRGGBB)
  */
 export const lerpColor = (colorA: string, colorB: string, t: number): string => {
+  // Validar formato de color
+  const hexColorRegex = /^#?[0-9a-fA-F]{6}$/;
+  const cleanColorA = colorA.startsWith('#') ? colorA : `#${colorA}`;
+  const cleanColorB = colorB.startsWith('#') ? colorB : `#${colorB}`;
+
+  if (!hexColorRegex.test(cleanColorA) || !hexColorRegex.test(cleanColorB)) {
+    throw new Error("lerpColor expects colors in #RRGGBB or RRGGBB format.");
+  }
+
+  // Asegurar que t esté en el rango [0, 1]
+  const clampedT = Math.min(1, Math.max(0, t));
+  
   // Extraer componentes RGB
-  const rA = parseInt(colorA.slice(1, 3), 16);
-  const gA = parseInt(colorA.slice(3, 5), 16);
-  const bA = parseInt(colorA.slice(5, 7), 16);
+  const parseHex = (hex: string) => parseInt(hex, 16);
+  const rA = parseHex(cleanColorA.slice(1, 3));
+  const gA = parseHex(cleanColorA.slice(3, 5));
+  const bA = parseHex(cleanColorA.slice(5, 7));
   
-  const rB = parseInt(colorB.slice(1, 3), 16);
-  const gB = parseInt(colorB.slice(3, 5), 16);
-  const bB = parseInt(colorB.slice(5, 7), 16);
+  const rB = parseHex(cleanColorB.slice(1, 3));
+  const gB = parseHex(cleanColorB.slice(3, 5));
+  const bB = parseHex(cleanColorB.slice(5, 7));
   
-  // Interpolar cada componente
-  const r = Math.round(lerp(rA, rB, t));
-  const g = Math.round(lerp(gA, gB, t));
-  const b = Math.round(lerp(bA, bB, t));
+  // Función auxiliar para limitar valores entre 0 y 255
+  const clamp = (value: number) => Math.min(255, Math.max(0, Math.round(value)));
+  
+  // Interpolar y limitar cada componente
+  const r = clamp(lerp(rA, rB, clampedT));
+  const g = clamp(lerp(gA, gB, clampedT));
+  const b = clamp(lerp(bA, bB, clampedT));
   
   // Convertir a formato hexadecimal
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;

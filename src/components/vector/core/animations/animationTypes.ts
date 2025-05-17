@@ -3,20 +3,10 @@
  * Centraliza todas las interfaces y tipos utilizados en el sistema
  */
 
-/**
- * Item vectorial con estado de animación
- */
-export interface AnimatedVectorItem {
-  id: string;
-  x: number;
-  y: number;
-  angle: number;
-  length: number;
-  originalLength: number;
-  color: string;
-  originalColor: string;
-  userData?: Record<string, unknown>;
-}
+// Importar tipos desde types para mantener una sola fuente de verdad
+import type { AnimatedVectorItem, VectorDimensions } from '../types';
+
+export type { AnimatedVectorItem, VectorDimensions };
 
 /**
  * Tipos de animación soportados
@@ -37,7 +27,7 @@ export type AnimationType =
 /**
  * Configuración global de la animación
  */
-export interface AnimationSettings {
+interface BaseAnimationSettings {
   type: AnimationType;
   baseSpeed: number;
   canvasWidth: number;
@@ -45,12 +35,46 @@ export interface AnimationSettings {
   mouseX: number | null;
   mouseY: number | null;
   isMouseDown: boolean;
-  seed?: number;
-  colorTransition?: boolean;
-  lengthTransition?: boolean;
-  angleTransition?: boolean;
-  resetOnTypeChange?: boolean;
+  resetOnTypeChange: boolean;
+  seed: number;
+  colorTransition: boolean;
+  lengthTransition: boolean;
+  angleTransition: boolean;
+  deltaTime?: number;
+}
+
+export interface AnimationSettings extends Partial<BaseAnimationSettings> {
   [key: string]: unknown;
+}
+
+/**
+ * Valores por defecto para AnimationSettings
+ */
+export const DEFAULT_ANIMATION_SETTINGS: Omit<BaseAnimationSettings, 'type'> = {
+  baseSpeed: 1.0,
+  canvasWidth: 0,
+  canvasHeight: 0,
+  mouseX: null,
+  mouseY: null,
+  isMouseDown: false,
+  resetOnTypeChange: true,
+  seed: 0,
+  colorTransition: true,
+  lengthTransition: true,
+  angleTransition: true
+};
+
+/**
+ * Normaliza la configuración de animación aplicando valores por defecto
+ */
+export function normalizeAnimationSettings(
+  settings: AnimationSettings
+): BaseAnimationSettings & Record<string, unknown> {
+  return {
+    ...DEFAULT_ANIMATION_SETTINGS,
+    ...settings,
+    type: settings.type! // type es requerido en AnimationSettings
+  } as BaseAnimationSettings & Record<string, unknown>;
 }
 
 /**
@@ -180,15 +204,67 @@ export interface CenterPulseProps {
 /**
  * Función de actualización para un tipo de animación
  */
-export type UpdateFunction = (
-  item: AnimatedVectorItem,
-  currentTime: number,
-  props: unknown,
+/**
+ * Estructura de resultado para cálculos de animación
+ */
+export interface AnimationCalculation {
+  angle: number;
+  lengthFactor?: number;
+  widthFactor?: number;
+  intensityFactor?: number;
+}
+
+/**
+ * Estado interno para animaciones de comportamiento en bandada
+ */
+export interface FlockingAnimationState {
+  velocityX: number;
+  velocityY: number;
+  lastNeighborIds?: string[];
+}
+
+/**
+ * Función para actualizar un vector individual
+ */
+export type UpdateFunction = <T extends AnimatedVectorItem>(
+  item: T,
+  index: number,
+  timestamp: number,
   settings: AnimationSettings,
-  allVectors?: AnimatedVectorItem[]
-) => AnimatedVectorItem;
+  dimensions: VectorDimensions,
+  allVectors?: T[]
+) => T;
 
 /**
  * Mapa de funciones de actualización por tipo de animación
  */
 export type UpdateFunctionMap = Record<AnimationType, UpdateFunction | null>;
+
+/**
+ * Unión de todas las interfaces de propiedades de animación
+ */
+export type AnimationPropsMap = {
+  none: {};
+  smoothWaves: SmoothWavesProps;
+  seaWaves: SeaWavesProps;
+  mouseInteraction: MouseInteractionProps;
+  directionalFlow: DirectionalFlowProps;
+  flocking: FlockingProps;
+  vortex: VortexProps;
+  lissajous: LissajousProps;
+  perlinFlow: PerlinFlowProps;
+  randomLoop: RandomLoopProps;
+  centerPulse: CenterPulseProps;
+};
+
+/**
+ * Obtiene el tipo de propiedades para un tipo de animación específico
+ */
+export type AnimationPropsForType<T extends AnimationType> = T extends keyof AnimationPropsMap
+  ? AnimationPropsMap[T]
+  : never;
+
+/**
+ * Todas las propiedades de animación posibles
+ */
+export type AnyAnimationProps = AnimationPropsMap[Exclude<keyof AnimationPropsMap, 'none'>];

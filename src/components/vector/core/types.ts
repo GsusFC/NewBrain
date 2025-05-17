@@ -56,24 +56,44 @@ export interface GradientConfig { // `export`
 }
 
 // Estructura de Datos del Vector (Estado Animado)
-export interface AnimatedVectorItem { // `export`
+export interface AnimatedVectorItem {
+  // Identificación y posición en la cuadrícula
   id: string;
-  r: number;
-  c: number;
-  baseX: number;
-  baseY: number;
-  originalX: number; // Posición X original en el grid
-  originalY: number; // Posición Y original en el grid
-  initialAngle: number;
-  currentAngle: number;
-  lengthFactor: number;
-  widthFactor: number;
-  intensityFactor?: number; // Añadido para efectos de intensidad (ej. color, opacidad)
-  previousAngle?: number;
-  targetAngle?: number;
-  animationState?: Record<string, unknown>;
-  flockId?: number;
-  customData?: unknown;
+  r: number; // Fila en la cuadrícula
+  c: number; // Columna en la cuadrícula
+  
+  // Posiciones
+  baseX: number;      // Posición X base (sin animación)
+  baseY: number;      // Posición Y base (sin animación)
+  originalX: number;  // Posición X original en el grid
+  originalY: number;  // Posición Y original en el grid
+  x: number;          // Posición X actual (puede ser animada)
+  y: number;          // Posición Y actual (puede ser animada)
+  
+  // Ángulos
+  initialAngle: number;   // Ángulo inicial (sin animación)
+  currentAngle: number;   // Ángulo actual (puede ser animado)
+  angle: number;          // Ángulo para compatibilidad con animaciones existentes
+  previousAngle?: number; // Ángulo anterior para interpolación
+  targetAngle?: number;   // Ángulo objetivo para animaciones
+  
+  // Factores de transformación
+  lengthFactor: number;   // Factor de longitud (0-1)
+  widthFactor: number;    // Factor de ancho (0-1)
+  intensityFactor?: number; // Factor de intensidad para efectos
+  
+  // Longitudes
+  length: number;         // Longitud actual del vector
+  originalLength: number; // Longitud original del vector
+  
+  // Colores
+  color: string;          // Color actual (puede ser animado)
+  originalColor: string;  // Color original
+  
+  // Estado y metadatos
+  animationState?: Record<string, unknown>; // Estado específico de la animación
+  flockId?: number;       // Identificador para comportamiento de bandada
+  customData?: unknown;   // Datos personalizados
 }
 
 // Define el tipo complejo para el color del vector
@@ -107,6 +127,11 @@ export interface GridSettings { // Asegurarse que contenga todas las props de DE
   vectorsPerFlock?: number; // Nueva propiedad para agrupar vectores
   userSvg?: string;
   userSvgPreserveAspectRatio?: string;
+  aspectRatio?: AspectRatioOption;
+  customAspectRatio?: {
+    width: number;
+    height: number;
+  };
 }
 
 export interface VectorSettings { // Asegurarse que contenga todas las props de DEFAULT_VECTOR_SETTINGS

@@ -1,7 +1,8 @@
 // Ruta: src/components/vector/renderers/VectorCanvasRenderer.tsx
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import { cn } from '@/lib/utils';
 import type {
   AnimatedVectorItem,
   VectorColorValue,
@@ -11,6 +12,8 @@ import type {
   GradientConfig,
   VectorRenderProps,
 } from '../core/types';
+import { fixPrecision, formatSvgPoint } from '@/utils/precision';
+import { applyCulling } from '../core/culling';
 
 // Importar Canvg para renderizado de SVG en canvas
 // Nota: Esto requiere instalar la dependencia si no está ya instalada
@@ -44,14 +47,59 @@ interface VectorCanvasRendererProps {
   onVectorClick?: (item: AnimatedVectorItem, event: React.MouseEvent) => void;
   onVectorHover?: (item: AnimatedVectorItem | null, event: React.MouseEvent) => void;
   interactionEnabled?: boolean;
+  /**
+   * Habilita el sistema de culling para optimizar el renderizado
+   * filtrando vectores que no son visibles en el viewport
+   */
+  cullingEnabled?: boolean;
+  /**
+   * Habilita modo de depuración visual y logging
+   */
+  debugMode?: boolean;
 }
 
-// --- Helper para calcular el desplazamiento de rotación ---
+// --- Helpers para cálculos y precisión ---
+/**
+ * Función auxiliar para asegurar valores numéricos finitos con precisión controlada
+ * @param value - Valor a verificar
+ * @param defaultValue - Valor por defecto si el valor no es válido
+ * @param precision - Número de decimales a redondear (opcional, por defecto 6)
+ * @returns Número válido con la precisión especificada
+ */
+const ensureSafeNumber = (value: unknown, defaultValue: number = 0, precision?: number): number => {
+  // Primero convertimos a número
+  let num = Number(value);
+  
+  // Verificamos si es un número finito y no es NaN
+  if (!Number.isFinite(num)) {
+    return defaultValue;
+  }
+  
+  // Aplicar precisión si se especifica
+  if (typeof precision === 'number' && precision >= 0) {
+    const factor = Math.pow(10, precision);
+    num = Math.round(num * factor) / factor;
+  }
+  
+  return num;
+};
+
+/**
+ * Helper para calcular el desplazamiento de rotación
+ * @param origin - Origen de la rotación ('start' | 'center' | 'end')
+ * @param length - Longitud del vector
+ * @returns Desplazamiento de rotación con precisión controlada
+ */
 const getRotationOffset = (origin: RotationOrigin, length: number): number => {
+  const safeLength = ensureSafeNumber(length, 0, 4);
+  
   switch (origin) {
-    case 'center': return length / 2;
-    case 'end': return length;
-    default: return 0; // 'start'
+    case 'center': 
+      return ensureSafeNumber(safeLength / 2, 0, 4);
+    case 'end': 
+      return ensureSafeNumber(safeLength, 0, 4);
+    default: 
+      return 0; // 'start'
   }
 };
 
@@ -61,7 +109,36 @@ const getRotationOffset = (origin: RotationOrigin, length: number): number => {
  * Esta implementación inicial soporta el renderizado de vectores en formato 'line'.
  * Maneja correctamente DPR para pantallas de alta densidad y soporta colores básicos.
  */
-export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
+// Función para comparar props y evitar re-renderizados innecesarios
+const areEqual = (prevProps: VectorCanvasRendererProps, nextProps: VectorCanvasRendererProps) => {
+  // Comparar props primitivas primero (más rápido)
+  if (
+    prevProps.width !== nextProps.width ||
+    prevProps.height !== nextProps.height ||
+    prevProps.backgroundColor !== nextProps.backgroundColor ||
+    prevProps.baseStrokeLinecap !== nextProps.baseStrokeLinecap ||
+    prevProps.baseVectorShape !== nextProps.baseVectorShape ||
+    prevProps.baseRotationOrigin !== nextProps.baseRotationOrigin ||
+    prevProps.interactionEnabled !== nextProps.interactionEnabled ||
+    prevProps.cullingEnabled !== nextProps.cullingEnabled ||
+    prevProps.debugMode !== nextProps.debugMode ||
+    prevProps.userSvgString !== nextProps.userSvgString ||
+    prevProps.userSvgPreserveAspectRatio !== nextProps.userSvgPreserveAspectRatio ||
+    prevProps.vectors.length !== nextProps.vectors.length
+  ) {
+    return false;
+  }
+  
+  // Comparar arrays de vectores (solo si las longitudes coinciden)
+  if (prevProps.vectors.some((v, i) => v.id !== nextProps.vectors[i]?.id)) {
+    return false;
+  }
+  
+  // Si llegamos aquí, los props son iguales
+  return true;
+};
+
+const VectorCanvasRendererComponent: React.FC<VectorCanvasRendererProps> = ({
   vectors,
   width,
   height,
@@ -77,7 +154,9 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
   userSvgPreserveAspectRatio,
   onVectorClick,
   onVectorHover,
-  interactionEnabled = true
+  interactionEnabled = true,
+  cullingEnabled = false,
+  debugMode = false
 }) => {
   // Referencia para el canvas principal
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -89,6 +168,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
   const [hoveredVectorId, setHoveredVectorId] = useState<string | null>(null);
 
   // Efecto para renderizar SVG en un canvas separado (cache)
+  // Solo se ejecuta cuando cambia userSvgString o userSvgPreserveAspectRatio
   useEffect(() => {
     if (!userSvgString || !Canvg) {
       // Si no hay SVG o no se ha cargado Canvg, limpiar la referencia
@@ -135,67 +215,201 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
     createSvgCache();
   }, [userSvgString, userSvgPreserveAspectRatio]);
   
-  // Efecto principal para el renderizado
+  // Aplicar culling si está habilitado para optimizar el rendimiento visual
+  // Solo se recalcula cuando cambian los vectores, el ancho, el alto o la configuración de culling
+  const optimizedVectors = useMemo(() => {
+    if (cullingEnabled && width > 0 && height > 0) {
+      // Aplicar culling con precisión controlada para mantener consistencia visual
+      const culledVectors = applyCulling(
+        vectors, 
+        fixPrecision(width, 0),
+        fixPrecision(height, 0),
+        {
+          // Habilitar nivel de detalle para vectores lejanos
+          enableLOD: true,
+          // Añadir padding para evitar cortes bruscos en los bordes
+          padding: fixPrecision(Math.max(50, typeof baseVectorLength === 'number' ? baseVectorLength / 2 : 10), 0),
+          // Usar quadtree solo si hay muchos vectores (>1000)
+          useQuadtree: vectors.length > 1000
+        }
+      );
+      
+      if (debugMode) {
+        // Log del porcentaje de vectores optimizados
+        const optimizationRate = fixPrecision((1 - culledVectors.length / vectors.length) * 100, 1);
+        // eslint-disable-next-line no-console
+        console.info(`[Culling Canvas] Optimizados ${optimizationRate}% (${culledVectors.length}/${vectors.length} vectores renderizados)`);
+      }
+      
+      return culledVectors;
+    }
+    
+    return vectors;
+  }, [vectors, width, height, cullingEnabled, baseVectorLength, debugMode]);
+
+  // Efecto principal de renderizado
+  // Solo se ejecuta cuando cambian las dependencias relevantes
   useEffect(() => {
+    // No renderizar si las dimensiones no son válidas
+    if (width <= 0 || height <= 0) {
+      if (debugMode) {
+        console.log('[VectorCanvasRenderer] Saltando renderizado: dimensiones inválidas', { width, height });
+      }
+      return;
+    }
     const canvas = canvasRef.current;
-    if (!canvas || width <= 0 || height <= 0) return;
+    if (!canvas) return;
+    
+    // Asegurar dimensiones mínimas
+    const safeWidth = Math.max(1, width || 0);
+    const safeHeight = Math.max(1, height || 0);
+    
+    if (debugMode) {
+      console.log('[Canvas] Dimensiones:', { width: safeWidth, height: safeHeight });
+    }
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.error('No se pudo obtener el contexto 2D del canvas');
+      return;
+    }
 
     // Manejar DPR (Device Pixel Ratio) para pantallas de alta densidad
     const dpr = window.devicePixelRatio || 1;
     
     // Ajustar dimensiones físicas del canvas
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    canvas.width = safeWidth * dpr;
+    canvas.height = safeHeight * dpr;
     
     // Ajustar dimensiones de visualización (CSS)
-    canvas.style.width = width + 'px';
-    canvas.style.height = height + 'px';
+    canvas.style.width = safeWidth + 'px';
+    canvas.style.height = safeHeight + 'px';
     
     // Aplicar escala para manejar DPR
     ctx.scale(dpr, dpr);
+    
+    // Estilos de depuración
+    if (debugMode) {
+      canvas.style.border = '2px dashed red';
+      canvas.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
+    }
 
     // Limpiar el canvas
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, safeWidth, safeHeight);
     
     // Dibujar el fondo si no es transparente
     if (backgroundColor !== 'transparent') {
       ctx.fillStyle = backgroundColor;
-      ctx.fillRect(0, 0, width, height);
+      ctx.fillRect(0, 0, safeWidth, safeHeight);
+    } else if (debugMode) {
+      // Fondo de cuadrícula para depuración
+      ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
+      ctx.lineWidth = 1;
+      const gridSize = 20;
+      
+      // Líneas verticales
+      for (let x = 0; x <= safeWidth; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, safeHeight);
+        ctx.stroke();
+      }
+      
+      // Líneas horizontales
+      for (let y = 0; y <= safeHeight; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(safeWidth, y);
+        ctx.stroke();
+      }
     }
 
-    // Función auxiliar para asegurar que un valor sea finito
-    const ensureFinite = (value: number, defaultValue: number = 0): number => {
-      return isFinite(value) ? value : defaultValue;
-    };
-    
+    // Log de depuración
+    if (debugMode) {
+      console.log('[CanvasRenderer] Renderizando', optimizedVectors.length, 'vectores');
+      console.log('[CanvasRenderer] Dimensiones:', { width, height });
+      if (optimizedVectors.length > 0) {
+        console.log('[CanvasRenderer] Primer vector:', optimizedVectors[0]);
+      }
+    }
+
     // Renderizar cada vector
-    vectors.forEach(item => {
-      const { baseX, baseY, currentAngle, lengthFactor = 1, widthFactor = 1 } = item;
+    optimizedVectors.forEach((vector) => {
+      const { lengthFactor = 1, widthFactor = 1 } = vector;
+      // Asegurar valores base con manejo de undefined
+      const baseX = ensureSafeNumber(vector.baseX, 0, 2);
+      const baseY = ensureSafeNumber(vector.baseY, 0, 2);
+      const vectorAngle = ensureSafeNumber(vector.currentAngle, 0, 4);
+      
+      // Saltar renderizado si las coordenadas base no son válidas
+      if (isNaN(baseX) || isNaN(baseY)) {
+        if (debugMode) {
+          console.warn('Vector con coordenadas inválidas:', { baseX, baseY, vector });
+        }
+        return;
+      }
       
       // Determinar longitud y ancho del vector - con validación de valores finitos
-      let actualVectorLength = typeof baseVectorLength === 'function' 
-        ? baseVectorLength(item) * lengthFactor 
-        : baseVectorLength * lengthFactor;
+      let actualVectorLength = ensureSafeNumber(
+        typeof baseVectorLength === 'function' 
+        ? baseVectorLength(vector) * lengthFactor 
+        : baseVectorLength * lengthFactor
+      );
       
-      let actualStrokeWidth = typeof baseVectorWidth === 'function'
-        ? baseVectorWidth(item) * widthFactor
-        : baseVectorWidth * widthFactor;
+      let actualStrokeWidth = ensureSafeNumber(
+        typeof baseVectorWidth === 'function'
+        ? baseVectorWidth(vector) * widthFactor
+        : baseVectorWidth * widthFactor
+      );
       
-      // Asegurar que los valores sean finitos
-      actualVectorLength = ensureFinite(actualVectorLength, 10); // Valor predeterminado de 10px
-      actualStrokeWidth = ensureFinite(actualStrokeWidth, 1);   // Valor predeterminado de 1px
+      // Asegurar que los valores sean finitos con precisión controlada
+      actualVectorLength = ensureSafeNumber(actualVectorLength, 10, 2); // Valor predeterminado de 10px, 2 decimales
+      actualStrokeWidth = ensureSafeNumber(actualStrokeWidth, 1, 2);   // Valor predeterminado de 1px, 2 decimales
+      
+      // Asegurar que los valores estén dentro de rangos razonables
+      actualVectorLength = Math.max(0.1, Math.min(1000, actualVectorLength));
+      actualStrokeWidth = Math.max(0.1, Math.min(100, actualStrokeWidth));
       
       // Calcular offset de rotación con validación
-      const rotationOffset = ensureFinite(getRotationOffset(baseRotationOrigin, actualVectorLength));
+      const rotationOffset = ensureSafeNumber(getRotationOffset(baseRotationOrigin, actualVectorLength));
       
       // Guardar estado del contexto
       ctx.save();
       
       // Determinar el color a utilizar (string, función o gradiente)
       let styleColor: string | CanvasGradient = "var(--primary)"; // Color por defecto
+      
+      // Preparar propiedades para el renderizado personalizado
+      const renderProps: VectorRenderProps = {
+        item: vector,
+        dimensions: { width, height },
+        baseVectorLength: typeof baseVectorLength === 'function' ? baseVectorLength(vector) : baseVectorLength,
+        baseVectorColor: styleColor,
+        baseVectorWidth: typeof baseVectorWidth === 'function' ? baseVectorWidth(vector) : baseVectorWidth,
+        baseStrokeLinecap: baseStrokeLinecap,
+        baseVectorShape: baseVectorShape,
+        baseRotationOrigin: baseRotationOrigin,
+        actualLength: actualVectorLength,
+        actualStrokeWidth: actualStrokeWidth,
+        getRotationOffset: (origin: 'start' | 'center' | 'end', len: number) => 
+          origin === 'center' ? len / 2 : origin === 'end' ? len : 0,
+        // Añadimos el contexto de canvas como propiedad no tipada para compatibilidad
+        ctx: ctx as any
+      };
+      
+      // Si hay un renderizador personalizado, llamarlo primero
+      if (typeof customRenderer === 'function') {
+        try {
+          // Llamar al renderizador personalizado con las propiedades y el contexto
+          customRenderer(renderProps, renderProps.ctx);
+          // El renderizador personalizado es responsable de manejar su propio save/restore
+        } catch (error) {
+          console.error('Error en renderizador personalizado:', error);
+          // Restaurar el contexto en caso de error para evitar corrupción del estado
+          ctx.restore();
+          ctx.save();
+        }
+      }
       
       if (typeof baseVectorColor === 'string') {
         // Color simple (string)
@@ -204,7 +418,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
         // Función que genera un color
         try {
           // Pasamos el vector actual, frame 0 (podríamos implementar un contador), total frames 1, y timestamp actual
-          const calculatedColor = baseVectorColor(item, 0, 1, performance.now());
+          const calculatedColor = baseVectorColor(vector, 0, 1, performance.now());
           if (typeof calculatedColor === 'string') {
             styleColor = calculatedColor;
           }
@@ -222,10 +436,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
           try {
             let gradient: CanvasGradient;
             
-            // Función auxiliar para asegurar valores numéricos finitos
-            const ensureFinite = (value: number, defaultValue: number = 0): number => {
-              return isFinite(value) ? value : defaultValue;
-            };
+            // Función auxiliar para asegurar valores numéricos finitos con precisión controlada
             
             if (gradConfig.type === 'linear') {
               // Gradiente lineal con validación
@@ -236,16 +447,16 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
               let y2 = Number(gradConfig.coords?.y2 ?? 0);
               
               // Validar valores y usar valores por defecto si no son finitos
-              x1 = ensureFinite(x1, 0);
-              y1 = ensureFinite(y1, 0);
-              x2 = ensureFinite(x2, 1); // Valor por defecto 1 para x2
-              y2 = ensureFinite(y2, 0);
+              x1 = ensureSafeNumber(x1, 0);
+              y1 = ensureSafeNumber(y1, 0);
+              x2 = ensureSafeNumber(x2, 1); // Valor por defecto 1 para x2
+              y2 = ensureSafeNumber(y2, 0);
               
               // Aplicar escalado
-              x1 = ensureFinite(x1 * unitFactorX, 0);
-              y1 = ensureFinite(y1 * unitFactorY, 0);
-              x2 = ensureFinite(x2 * unitFactorX, unitFactorX);
-              y2 = ensureFinite(y2 * unitFactorY, 0);
+              x1 = ensureSafeNumber(x1 * unitFactorX, 0);
+              y1 = ensureSafeNumber(y1 * unitFactorY, 0);
+              x2 = ensureSafeNumber(x2 * unitFactorX, unitFactorX);
+              y2 = ensureSafeNumber(y2 * unitFactorY, 0);
               
               gradient = ctx.createLinearGradient(x1, y1, x2, y2);
             } else {
@@ -258,18 +469,18 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
               let fy = Number(gradConfig.coords?.fy ?? cy);
               
               // Validar valores
-              cx = ensureFinite(cx, 0.5);
-              cy = ensureFinite(cy, 0.5);
-              r = ensureFinite(r, 0.5);
-              fx = ensureFinite(fx, cx);
-              fy = ensureFinite(fy, cy);
+              cx = ensureSafeNumber(cx, 0.5);
+              cy = ensureSafeNumber(cy, 0.5);
+              r = ensureSafeNumber(r, 0.5);
+              fx = ensureSafeNumber(fx, cx);
+              fy = ensureSafeNumber(fy, cy);
               
               // Aplicar escalado
-              cx = ensureFinite(cx * unitFactorX, unitFactorX * 0.5);
-              cy = ensureFinite(cy * unitFactorY, unitFactorY * 0.5);
-              r = ensureFinite(r * Math.max(unitFactorX, unitFactorY), Math.max(unitFactorX, unitFactorY) * 0.5);
-              fx = ensureFinite(fx * unitFactorX, cx);
-              fy = ensureFinite(fy * unitFactorY, cy);
+              cx = ensureSafeNumber(cx * unitFactorX, unitFactorX * 0.5);
+              cy = ensureSafeNumber(cy * unitFactorY, unitFactorY * 0.5);
+              r = ensureSafeNumber(r * Math.max(unitFactorX, unitFactorY), Math.max(unitFactorX, unitFactorY) * 0.5);
+              fx = ensureSafeNumber(fx * unitFactorX, cx);
+              fy = ensureSafeNumber(fy * unitFactorY, cy);
               
               gradient = ctx.createRadialGradient(
                 fx, fy, 0, // Origen interno del gradiente
@@ -282,7 +493,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
               try {
                 // Asegurar que el offset sea un número finito entre 0 y 1
                 let offset = Number(stop.offset);
-                offset = ensureFinite(offset, 0);
+                offset = ensureSafeNumber(offset, 0);
                 offset = Math.max(0, Math.min(1, offset)); // Limitar entre 0 y 1
                 
                 gradient.addColorStop(
@@ -308,8 +519,8 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
       ctx.lineCap = baseStrokeLinecap;
       
       // Transformaciones
-      ctx.translate(baseX, baseY);
-      ctx.rotate(currentAngle * (Math.PI / 180)); // Convertir grados a radianes
+      ctx.translate(fixPrecision(baseX), fixPrecision(baseY));
+      ctx.rotate(fixPrecision(vectorAngle * (Math.PI / 180))); // Convertir grados a radianes
       ctx.translate(-rotationOffset, 0);
       
       // Dibujar vector según su forma
@@ -317,47 +528,52 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
       
       switch (baseVectorShape) {
         case 'arrow': {
-          // Dibujar el cuerpo de la flecha
-          const arrowHeadSize = Math.min(actualVectorLength * 0.3, actualStrokeWidth * 2 + 5);
-          const lineLength = actualVectorLength - arrowHeadSize * 0.8;
-          
-          if (lineLength > 0) {
-            // Dibujar la línea principal
+          // Dibujar una flecha
+          const drawArrow = (x: number, y: number, angle: number, length: number, width: number) => {
+            ctx.save();
+            ctx.translate(fixPrecision(x), fixPrecision(y));
+            // Convertir ángulo de grados a radianes para la rotación
+            const angleInRadians = fixPrecision(angle * (Math.PI / 180));
+            ctx.rotate(angleInRadians);
+            
+            // Dibujar la línea
+            ctx.beginPath();
             ctx.moveTo(0, 0);
-            ctx.lineTo(lineLength, 0);
+            ctx.lineTo(fixPrecision(length), 0);
             ctx.stroke();
             
-            // Dibujar la punta triangular
+            // Dibujar la punta de flecha
+            const arrowHeadSize = fixPrecision(Math.min(length * 0.3, width * 2 + 5));
             ctx.beginPath();
-            ctx.moveTo(actualVectorLength, 0);
-            ctx.lineTo(lineLength, -arrowHeadSize / 2);
-            ctx.lineTo(lineLength, arrowHeadSize / 2);
+            ctx.moveTo(fixPrecision(length), 0);
+            ctx.lineTo(fixPrecision(length - arrowHeadSize), fixPrecision(-arrowHeadSize / 2));
+            ctx.lineTo(fixPrecision(length - arrowHeadSize), fixPrecision(arrowHeadSize / 2));
             ctx.closePath();
             ctx.fill();
-          } else {
-            // Flecha muy corta, mostrar solo una línea simple como fallback
-            ctx.moveTo(0, 0);
-            ctx.lineTo(actualVectorLength, 0);
-            ctx.stroke();
-          }
+            
+            ctx.restore();
+          };
+          drawArrow(0, 0, vectorAngle, actualVectorLength, actualStrokeWidth);
           break;
         }
         
         case 'dot': {
           // Círculo simple centrado en la posición base
-          ctx.arc(0, 0, actualStrokeWidth, 0, Math.PI * 2);
+          ctx.arc(0, 0, fixPrecision(actualStrokeWidth), 0, Math.PI * 2);
           ctx.fill();
           break;
         }
         
         case 'triangle': {
           // Triángulo con punta hacia la derecha
-          const tipX = actualVectorLength;
-          const halfBase = actualVectorLength * 0.3 * Math.min(1, widthFactor);
+          const triangleHeight = fixPrecision(actualVectorLength);
+          const triangleWidth = fixPrecision(actualStrokeWidth * 2);
           
-          ctx.moveTo(tipX, 0); // Punta del triángulo
-          ctx.lineTo(0, -halfBase); // Esquina superior izquierda
-          ctx.lineTo(0, halfBase); // Esquina inferior izquierda
+          ctx.beginPath();
+          ctx.moveTo(0, 0);  // Base izquierda
+          ctx.lineTo(0, fixPrecision(-triangleWidth / 2));  // Arriba
+          ctx.lineTo(triangleHeight, 0);  // Punta
+          ctx.lineTo(0, fixPrecision(triangleWidth / 2));  // Abajo
           ctx.closePath();
           ctx.fill();
           break;
@@ -365,17 +581,25 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
         
         case 'semicircle': {
           // Semicircle with flat edge at left (origin)
-          ctx.arc(actualVectorLength / 2, 0, actualVectorLength / 2, Math.PI, 0, false);
+          ctx.arc(fixPrecision(actualVectorLength / 2), 0, fixPrecision(actualVectorLength / 2), Math.PI, 0, false);
           ctx.stroke();
           break;
         }
         
         case 'curve': {
           // Curva cuadrática simple
-          const controlY = -actualVectorLength * 0.3; // Punto de control encima de la línea
+          const amplitude = fixPrecision(actualStrokeWidth);
+          const steps = 20; // Más pasos para curvas más suaves
           
+          ctx.beginPath();
           ctx.moveTo(0, 0);
-          ctx.quadraticCurveTo(actualVectorLength / 2, controlY, actualVectorLength, 0);
+          
+          for (let i = 0; i <= steps; i++) {
+            const x = fixPrecision((i / steps) * actualVectorLength);
+            const y = fixPrecision(amplitude * Math.sin((i / steps) * Math.PI));
+            ctx.lineTo(x, y);
+          }
+          
           ctx.stroke();
           break;
         }
@@ -391,13 +615,13 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
               
               // Centrar el SVG en el punto de origen
               const offsetX = 0; // Podemos ajustar esto para alinear mejor
-              const offsetY = -svgSize / 2; // Centrar verticalmente
+              const offsetY = fixPrecision(-svgSize / 2); // Centrar verticalmente
               
               // Dibujar el SVG cacheado
               ctx.drawImage(
                 userSvgCacheRef.current,
                 offsetX, offsetY, // Posición de destino
-                svgSize, svgSize  // Tamaño de destino
+                fixPrecision(svgSize), fixPrecision(svgSize)  // Tamaño de destino
               );
               
               // Mostrar debug info si es necesario (quitar en producción)
@@ -407,14 +631,14 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
               
               // Fallback: Renderizar un rectángulo simple como indicador de error
               ctx.fillStyle = 'rgba(255,0,0,0.3)';
-              ctx.fillRect(0, -actualStrokeWidth, actualVectorLength, actualStrokeWidth * 2);
-              ctx.strokeRect(0, -actualStrokeWidth, actualVectorLength, actualStrokeWidth * 2);
+              ctx.fillRect(0, fixPrecision(-actualStrokeWidth), fixPrecision(actualVectorLength), fixPrecision(actualStrokeWidth * 2));
+              ctx.strokeRect(0, fixPrecision(-actualStrokeWidth), fixPrecision(actualVectorLength), fixPrecision(actualStrokeWidth * 2));
             }
           } else {
             // SVG no disponible - mostrar un marcador simple
             ctx.fillStyle = 'rgba(200,200,200,0.5)';
-            ctx.fillRect(0, -actualStrokeWidth, actualVectorLength, actualStrokeWidth * 2);
-            ctx.strokeRect(0, -actualStrokeWidth, actualVectorLength, actualStrokeWidth * 2);
+            ctx.fillRect(0, fixPrecision(-actualStrokeWidth), fixPrecision(actualVectorLength), fixPrecision(actualStrokeWidth * 2));
+            ctx.strokeRect(0, fixPrecision(-actualStrokeWidth), fixPrecision(actualVectorLength), fixPrecision(actualStrokeWidth * 2));
           }
           break;
         }
@@ -423,7 +647,7 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
         default: {
           // Línea simple (caso base, por defecto)
           ctx.moveTo(0, 0);
-          ctx.lineTo(actualVectorLength, 0);
+          ctx.lineTo(fixPrecision(actualVectorLength), 0);
           ctx.stroke();
           break;
         }
@@ -454,16 +678,21 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
   const isPointInVector = (x: number, y: number, vector: AnimatedVectorItem): boolean => {
     if (!interactionEnabled) return false;
     
-    const { baseX, baseY, currentAngle, lengthFactor = 1, widthFactor = 1 } = vector;
+    const { baseX, baseY, lengthFactor = 1, widthFactor = 1 } = vector;
+    const vectorAngle = ensureSafeNumber(vector.currentAngle || 0);
     
     // Calcular dimensiones reales
-    const actualVectorLength = typeof baseVectorLength === 'function' 
+    const actualVectorLength = ensureSafeNumber(
+      typeof baseVectorLength === 'function' 
       ? baseVectorLength(vector) * lengthFactor 
-      : baseVectorLength * lengthFactor;
+      : baseVectorLength * lengthFactor
+    );
     
-    const actualStrokeWidth = typeof baseVectorWidth === 'function'
+    const actualStrokeWidth = ensureSafeNumber(
+      typeof baseVectorWidth === 'function'
       ? baseVectorWidth(vector) * widthFactor
-      : baseVectorWidth * widthFactor;
+      : baseVectorWidth * widthFactor
+    );
       
     // Calcular desplazamiento para rotación
     const rotationOffset = getRotationOffset(baseRotationOrigin, actualVectorLength);
@@ -474,9 +703,9 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
     const translatedY = y - baseY;
     
     // 2. Rotar en sentido inverso
-    const angleInRadians = currentAngle * (Math.PI / 180);
-    const rotatedX = translatedX * Math.cos(-angleInRadians) - translatedY * Math.sin(-angleInRadians);
-    const rotatedY = translatedX * Math.sin(-angleInRadians) + translatedY * Math.cos(-angleInRadians);
+    const angleInRadians = fixPrecision(vectorAngle * (Math.PI / 180));
+    const rotatedX = fixPrecision(translatedX * Math.cos(-angleInRadians) - translatedY * Math.sin(-angleInRadians));
+    const rotatedY = fixPrecision(translatedX * Math.sin(-angleInRadians) + translatedY * Math.cos(-angleInRadians));
     
     // 3. Considerar el desplazamiento de rotación
     const adjustedX = rotatedX + rotationOffset;
@@ -485,8 +714,8 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
     switch (baseVectorShape) {
       case 'dot': {
         // Para un punto, el área es un círculo
-        const distance = Math.sqrt(Math.pow(rotatedX, 2) + Math.pow(rotatedY, 2));
-        return distance <= actualStrokeWidth * 1.5; // Área un poco más grande para facilitar la interacción
+        const distance = fixPrecision(Math.sqrt(Math.pow(rotatedX, 2) + Math.pow(rotatedY, 2)));
+        return distance <= fixPrecision(actualStrokeWidth * 1.5); // Área un poco más grande para facilitar la interacción
       }
       
       case 'arrow':
@@ -520,9 +749,9 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
   const findVectorUnderCursor = (x: number, y: number): AnimatedVectorItem | null => {
     // Recorremos en orden inverso para manejar correctamente las superposiciones
     // (los vectores dibujados más tarde están "encima")
-    for (let i = vectors.length - 1; i >= 0; i--) {
-      if (isPointInVector(x, y, vectors[i])) {
-        return vectors[i];
+    for (let i = optimizedVectors.length - 1; i >= 0; i--) {
+      if (isPointInVector(x, y, optimizedVectors[i])) {
+        return optimizedVectors[i];
       }
     }
     return null;
@@ -580,20 +809,83 @@ export const VectorCanvasRenderer: React.FC<VectorCanvasRendererProps> = ({
     }
   };
 
+  // Sistema de logging con throttling
+  const logRender = (() => {
+    if (process.env.NODE_ENV !== 'development' || !debugMode) return () => {};
+    
+    let lastLogTime = 0;
+    const LOG_INTERVAL = 2000; // 2 segundos entre logs
+    let logGroup: string | null = null;
+    
+    return () => {
+      const now = Date.now();
+      if (now - lastLogTime < LOG_INTERVAL) return;
+      
+      lastLogTime = now;
+      
+      // Cerrar grupo anterior si existe
+      if (logGroup) {
+        console.groupEnd();
+      }
+      
+      // Crear nuevo grupo
+      logGroup = `[VectorCanvasRenderer] Renderizado (${width}x${height})`;
+      console.groupCollapsed(logGroup);
+      
+      // Solo mostrar detalles en el primer log
+      if (lastLogTime === now) {
+        console.log('Vectores activos:', optimizedVectors.length);
+        console.log('Dimensiones del canvas:', { width, height });
+        console.log('Color de fondo:', backgroundColor);
+        console.log('Última actualización:', new Date().toLocaleTimeString());
+      }
+      
+      // Usar setTimeout para cerrar el grupo después de un breve retraso
+      // Esto permite ver el grupo expandido en la consola
+      setTimeout(() => {
+        if (logGroup) {
+          console.groupEnd();
+          logGroup = null;
+        }
+      }, 100);
+    };
+  })();
+  
+  // Ejecutar el logger
+  logRender();
+
   return (
-    <canvas 
-      ref={canvasRef} 
-      style={{ 
-        display: 'block', 
-        width: width + 'px', 
-        height: height + 'px', 
-        cursor: hoveredVectorId ? 'pointer' : 'default' 
-      }}
-      onClick={interactionEnabled && onVectorClick ? handleClick : undefined}
-      onMouseMove={interactionEnabled && onVectorHover ? handleMouseMove : undefined}
-      onMouseLeave={interactionEnabled && onVectorHover ? handleMouseLeave : undefined}
-    />
+    <div className="relative w-full h-full">
+      <canvas
+        ref={canvasRef}
+        className={cn("block w-full h-full bg-blue-50", {
+          'cursor-pointer': interactionEnabled && onVectorClick,
+          'cursor-default': !interactionEnabled || !onVectorClick,
+          'border-2 border-dashed border-red-500': debugMode,
+        })}
+        onClick={handleClick}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        width={width}
+        height={height}
+        style={{
+          backgroundColor,
+          touchAction: 'none',
+        }}
+      />
+      {debugMode && (
+        <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs p-2 rounded">
+          Canvas: {width}×{height}px
+        </div>
+      )}
+    </div>
   );
 };
+
+// Exportar el componente memoizado para evitar re-renderizados innecesarios
+export const VectorCanvasRenderer = React.memo(VectorCanvasRendererComponent, areEqual);
+
+// Exportar el componente sin memo para casos de prueba
+export { VectorCanvasRendererComponent };
 
 export default VectorCanvasRenderer;

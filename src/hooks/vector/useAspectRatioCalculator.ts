@@ -52,32 +52,47 @@ function calculateCustomGrid(
   minCols = GRID_CONSTANTS.MIN_COLS,
   padding = GRID_CONSTANTS.DEFAULT_PADDING
 ): { rows: number; cols: number } {
+  // Crear variables seguras para trabajar (evitar mutación de parámetros)
+  let safeW = containerWidth;
+  let safeH = containerHeight;
+  let safeSpacing = spacing;
+  let safeMargin = margin;
+  let safeRatio = ratio;
+  let safePadding = padding;
+
   // Validación de parámetros
-  if (containerWidth <= 0 || containerHeight <= 0 || spacing <= 0 || margin < 0 || ratio <= 0 || padding < 0) {
+  if (safeW <= 0 || safeH <= 0 || safeSpacing <= 0 || safeMargin < 0 || safeRatio <= 0 || safePadding < 0) {
     if (process.env.NODE_ENV === 'development') {
       console.warn('[calculateCustomGrid] Valores de entrada no válidos:', 
         { containerWidth, containerHeight, spacing, margin, ratio, padding }, 'Usando valores seguros.');
     }
-    containerWidth = Math.max(1, containerWidth);
-    containerHeight = Math.max(1, containerHeight);
-    spacing = Math.max(1, spacing);
-    margin = Math.max(0, margin);
-    ratio = Math.max(0.1, ratio);
-    padding = Math.max(0, padding);
+    safeW       = Math.max(1, safeW);
+    safeH       = Math.max(1, safeH);
+    safeSpacing = Math.max(1, safeSpacing);
+    safeMargin  = Math.max(0, safeMargin);
+    safeRatio   = Math.max(0.1, safeRatio);
+    safePadding = Math.max(0, safePadding);
   }
 
   // Descuenta tanto el margen exterior como el padding interno
-  const availableWidth = containerWidth - margin * 2 - padding * 2;
-  const availableHeight = containerHeight - margin * 2 - padding * 2;
+  const availableWidth = safeW - safeMargin * 2 - safePadding * 2;
+  const availableHeight = safeH - safeMargin * 2 - safePadding * 2;
 
   // Intentar primero ajustando por ancho disponible
-  let cols = Math.floor(availableWidth / spacing);
-  let rows = Math.floor(cols / ratio);
+  let cols = Math.floor(availableWidth / safeSpacing);
+  let rows = Math.floor(cols / safeRatio);
 
   // Si las filas no caben en altura, ajustar por altura
-  if (rows * spacing > availableHeight) {
-    rows = Math.floor(availableHeight / spacing);
-    cols = Math.floor(rows * ratio);
+  if (rows * safeSpacing > availableHeight) {
+    rows = Math.floor(availableHeight / safeSpacing);
+    cols = Math.floor(rows * safeRatio);
+    
+    // 🔁 Asegurar que el ancho también cabe (validación secundaria)
+    // Esto previene desbordamiento en contenedores altos y estrechos
+    if (cols * safeSpacing > availableWidth) {
+      cols = Math.floor(availableWidth / safeSpacing);
+      rows = Math.floor(cols / safeRatio);
+    }
   }
 
   return {
@@ -152,6 +167,9 @@ export function useAspectRatioCalculator() {
           return [22, 9];
         case '2:1':
           return [2, 1];
+        case 'auto':
+          // Let the caller know there is no fixed ratio
+          return [0, 0]; // Indica "libre" o sin restricción de ratio
         case 'custom':
           // Validar el customRatio
           if (!customRatio) {
@@ -231,6 +249,15 @@ export function useAspectRatioCalculator() {
       }
       
       const [width, height] = getAspectRatioValues(aspectRatio, customRatio);
+      
+      // Evitar división por cero o valores inválidos
+      if (width === 0 || height === 0) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[useAspectRatioCalculator] Se intentó calcular con ancho o alto igual a 0. Usando valor por defecto.');
+        }
+        return rows; // Devolver el mismo número de filas como columnas por defecto
+      }
+      
       const aspectRatioValue = width / height;
       
       // Calcular columnas para mantener proporción y redondear para evitar números con decimales
@@ -252,13 +279,27 @@ export function useAspectRatioCalculator() {
       // Validar que cols sea positivo
       if (cols <= 0) {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[useAspectRatioCalculator] Se intentó calcular con columnas <= 0. Usando 1 como mínimo.');
+          console.warn('[useAspectRatioProvider] Se intentó calcular con columnas <= 0. Usando 1 como mínimo.');
         }
         cols = Math.max(1, cols); // Asegurar valor positivo
       }
       
       const [width, height] = getAspectRatioValues(aspectRatio, customRatio);
+      
+      // Evitar división por cero o valores inválidos
+      if (width === 0 || height === 0) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[useAspectRatioProvider] Se intentó calcular con ancho o alto igual a 0. Usando valor por defecto.');
+        }
+        return cols; // Devolver el mismo número de columnas como filas por defecto
+      }
+      
       const aspectRatioValue = width / height;
+      
+      // Evitar división por cero (aunque ya está validado, es una precaución adicional)
+      if (aspectRatioValue === 0) {
+        return cols;
+      }
       
       // Calcular filas para mantener proporción y redondear para evitar números con decimales
       return Math.round(cols / aspectRatioValue);
@@ -357,6 +398,20 @@ export function useAspectRatioCalculator() {
         
         // Calcular columnas basadas en las filas y el ratio
         const [width, height] = getAspectRatioValues(aspectRatio, customRatio);
+        
+        // Manejar el caso especial de 'auto' (que devuelve [0, 0])
+        if (width === 0 && height === 0) {
+          // Para modo 'auto', usar el ratio del contenedor disponible
+          const containerRatio = safeContainerWidth / safeContainerHeight;
+          const cols = Math.round(baseRows * containerRatio);
+          return {
+            rows: baseRows,
+            cols: Math.max(GRID_CONSTANTS.MIN_COLS, cols),
+            spacing: safeSpacing,
+            margin: safeMargin
+          };
+        }
+        
         const aspectRatioValue = width / height;
         const cols = Math.round(baseRows * aspectRatioValue);
         
@@ -369,6 +424,36 @@ export function useAspectRatioCalculator() {
       } else {
         // Modo automático: calcular filas y columnas óptimas según el espacio disponible
         const [width, height] = getAspectRatioValues(aspectRatio, customRatio);
+        
+        // Manejar el caso especial de 'auto' (que devuelve [0, 0])
+        if (width === 0 && height === 0) {
+          // Para 'auto', maximizar el uso del espacio disponible según las proporciones del contenedor
+          // En este caso dejamos que calculateCustomGrid determine las filas/columnas basado en el espacio
+          // disponible sin forzar ningún ratio específico
+          
+          // Proporción natural del contenedor
+          const containerRatio = safeContainerWidth / safeContainerHeight;
+          
+          // Utilizar esta proporción para el cálculo
+          const { rows, cols } = calculateCustomGrid(
+            safeContainerWidth,
+            safeContainerHeight,
+            safeSpacing,
+            safeMargin,
+            containerRatio,
+            GRID_CONSTANTS.MIN_ROWS,
+            GRID_CONSTANTS.MIN_COLS,
+            safePadding
+          );
+          
+          return {
+            rows,
+            cols,
+            spacing: safeSpacing,
+            margin: safeMargin
+          };
+        }
+        
         const aspectRatioValue = width / height;
         
         // Utilizar calculateCustomGrid también para ratios estándar
@@ -437,12 +522,12 @@ export function useAspectRatioCalculator() {
           }
         },
         '16:9': { 
-          ratio: 16/9, 
+          ratio: 22/9, // Usando el mismo valor optimizado que getAspectRatioValues
           name: '16:9',
           metadata: {
             isOptimizedForUI: true,
             exactRatio: 16/9,
-            description: 'Estándar para pantallas widescreen y vídeo HD'
+            description: 'Estándar para pantallas widescreen y vídeo HD (usando valor optimizado 22:9)'
           }
         },
         'custom': { 

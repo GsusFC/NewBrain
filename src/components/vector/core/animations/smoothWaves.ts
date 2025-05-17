@@ -7,6 +7,7 @@ import { AnimatedVectorItem, AnimationSettings, SmoothWavesProps } from './anima
 import { getDefaultPropsForType } from './defaultProps';
 import { calculateWave } from '../utils/math';
 import { lerp } from '../utils/interpolation';
+import { fixPrecision, formatSvgPoint, fixTransformPrecision } from '@/utils/precision';
 
 /**
  * Actualiza un vector según la animación de ondas suaves
@@ -22,66 +23,71 @@ export const updateSmoothWaves = (
   props: Partial<SmoothWavesProps>,
   settings: AnimationSettings
 ): AnimatedVectorItem => {
-  // Obtener propiedades con valores predeterminados
+  // Obtener propiedades con valores predeterminados y aplicar fixPrecision para garantizar consistencia
   const defaultProps = getDefaultPropsForType<SmoothWavesProps>('smoothWaves');
   const {
-    waveFrequency = defaultProps.waveFrequency || 0.0002,
-    waveAmplitude = defaultProps.waveAmplitude || 20,
-    baseAngle = defaultProps.baseAngle || 0,
-    patternScale = defaultProps.patternScale || 0.01,
-    timeScale = defaultProps.timeScale || 1.0,
+    waveFrequency = fixPrecision(defaultProps.waveFrequency || 0.0002, 6),
+    waveAmplitude = fixPrecision(defaultProps.waveAmplitude || 20, 1),
+    baseAngle = fixPrecision(defaultProps.baseAngle || 0, 6),
+    patternScale = fixPrecision(defaultProps.patternScale || 0.01, 6),
+    timeScale = fixPrecision(defaultProps.timeScale || 1.0, 6),
     waveType = defaultProps.waveType || 'circular',
-    centerX = defaultProps.centerX || 0.5,
-    centerY = defaultProps.centerY || 0.5
+    centerX = fixPrecision(defaultProps.centerX || 0.5, 6),
+    centerY = fixPrecision(defaultProps.centerY || 0.5, 6)
   } = props;
 
-  // Calcular el tiempo normalizado para la animación
-  const time = currentTime * 0.001 * settings.baseSpeed * timeScale;
+  // Calcular el tiempo normalizado para la animación con precisión controlada
+  const time = fixPrecision(currentTime * 0.001 * settings.baseSpeed * timeScale, 6);
   
-  // Calcular el centro de la onda en coordenadas absolutas
-  const centerAbsX = settings.canvasWidth * centerX;
-  const centerAbsY = settings.canvasHeight * centerY;
+  // Calcular el centro de la onda en coordenadas absolutas con precisión fija
+  const centerAbsX = fixPrecision(settings.canvasWidth * centerX, 2);
+  const centerAbsY = fixPrecision(settings.canvasHeight * centerY, 2);
   
   // Calcular factor espacial según el tipo de onda
   let spatialFactor = 0;
   
   if (waveType === 'circular') {
     // Para ondas circulares, el factor espacial depende de la distancia al centro
-    const dx = item.x - centerAbsX;
-    const dy = item.y - centerAbsY;
-    spatialFactor = Math.sqrt(dx * dx + dy * dy) * patternScale;
+    // Aplicamos precisión en cada paso del cálculo para evitar errores de propagación
+    const dx = fixPrecision(item.x - centerAbsX, 2);
+    const dy = fixPrecision(item.y - centerAbsY, 2);
+    const distanceSquared = fixPrecision(dx * dx + dy * dy, 2);
+    const distance = fixPrecision(Math.sqrt(distanceSquared), 4);
+    spatialFactor = fixPrecision(distance * patternScale, 6);
   } else {
     // Para ondas lineales, el factor espacial depende de las coordenadas de manera lineal
-    spatialFactor = (item.x + item.y) * patternScale;
+    spatialFactor = fixPrecision((item.x + item.y) * patternScale, 6);
   }
   
-  // Calcular la desviación angular basada en el tiempo y la posición
-  const waveValue = calculateWave(
-    item.x * patternScale,
-    item.y * patternScale,
+  // Calcular la desviación angular basada en el tiempo y la posición con precisión controlada
+  const waveValue = fixPrecision(calculateWave(
+    fixPrecision(item.x * patternScale, 6),
+    fixPrecision(item.y * patternScale, 6),
     time,
     waveFrequency,
     waveAmplitude
-  );
+  ), 6);
   
-  // Calcular el ángulo resultante sumando el ángulo base y la desviación
-  const angleRadians = baseAngle + waveValue;
+  // Calcular el ángulo resultante sumando el ángulo base y la desviación con precisión fija
+  const angleRadians = fixPrecision(baseAngle + waveValue, 6);
   
-  // Aplicar transición suave al ángulo si está habilitado
+  // Aplicar transición suave al ángulo si está habilitado, con precisión controlada
   let newAngle = angleRadians;
   if (settings.angleTransition) {
-    newAngle = lerp(item.angle, angleRadians, 0.1);
+    newAngle = fixPrecision(lerp(item.angle, angleRadians, fixPrecision(0.1, 6)), 6);
   }
   
-  // Calcular factor de longitud basado en el tiempo y la posición
+  // Calcular factor de longitud basado en el tiempo y la posición con precisión controlada
   // Esto hace que la longitud oscile suavemente
-  const lengthFactor = 1 + Math.sin(time * 0.5 + spatialFactor) * 0.2;
-  const targetLength = item.originalLength * lengthFactor;
+  const sinArg = fixPrecision(time * 0.5 + spatialFactor, 6);
+  const sinValue = fixPrecision(Math.sin(sinArg), 6);
+  const lengthFactor = fixPrecision(1 + sinValue * 0.2, 6);
+  const targetLength = fixPrecision(item.originalLength * lengthFactor, 3);
   
-  // Aplicar transición suave a la longitud si está habilitado
+  // Aplicar transición suave a la longitud si está habilitado, con precisión controlada
   let newLength = targetLength;
   if (settings.lengthTransition) {
-    newLength = lerp(item.length, targetLength, 0.1);
+    newLength = fixPrecision(lerp(item.length, targetLength, fixPrecision(0.1, 6)), 3);
   }
   
   return {

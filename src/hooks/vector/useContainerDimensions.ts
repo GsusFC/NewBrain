@@ -129,8 +129,8 @@ export function useContainerDimensions(args: UseContainerDimensionsArgs) {
     height: 1 
   });
   
-  // Referencia para timeout de debounce
-  const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Reference for debounce timeout - using ReturnType for better browser compatibility
+  const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Referencia para el último elemento observado
   const lastObservedElement = useRef<Element | null>(null);
@@ -152,17 +152,40 @@ export function useContainerDimensions(args: UseContainerDimensionsArgs) {
         adjustment: { type: 'none' }
       };
     }
-    // Caso 2: Si solo el ancho está fijo, calcular el alto proporcionalmente
+    // Case 2: If only width is fixed, calculate height based on aspect ratio if specified
     else if (fixedWidth) {
+      // Respect explicit aspectRatio when present
+      const ratio = aspectRatio === 'custom' && customAspectRatio
+        ? customAspectRatio.width / customAspectRatio.height
+        : aspectRatio === '1:1'
+          ? 1
+          : aspectRatio === '16:9'
+            ? 16 / 9
+            : aspectRatio === '2:1'
+              ? 2
+              : usableHeight / usableWidth; // fallback to container ratio
+      
       return {
         width: fixedWidth,
-        height: Math.floor(fixedWidth * (usableHeight / usableWidth)),
+        height: Math.floor(fixedWidth / ratio),
         adjustment: { type: 'widthLimited' }
       };
-    } else if (fixedHeight) {
-      // Si solo la altura está fija, calcular ancho proporcionalmente
+    } 
+    // Case 3: If only height is fixed, calculate width based on aspect ratio if specified
+    else if (fixedHeight) {
+      // Respect explicit aspectRatio when present
+      const ratio = aspectRatio === 'custom' && customAspectRatio
+        ? customAspectRatio.width / customAspectRatio.height
+        : aspectRatio === '1:1'
+          ? 1
+          : aspectRatio === '16:9'
+            ? 16 / 9
+            : aspectRatio === '2:1'
+              ? 2
+              : usableWidth / usableHeight; // fallback to container ratio
+      
       return {
-        width: Math.floor(fixedHeight * (usableWidth / usableHeight)),
+        width: Math.floor(fixedHeight * ratio),
         height: fixedHeight,
         adjustment: { type: 'heightLimited' }
       };
@@ -238,17 +261,18 @@ export function useContainerDimensions(args: UseContainerDimensionsArgs) {
   }, [fixedWidth, fixedHeight, aspectRatio, customAspectRatio, padding, debug]);
 
   /**
-   * Obtiene el elemento DOM a partir de una referencia que puede ser un elemento directo o un RefObject
+   * Gets the DOM element from a reference that can be a direct element or a RefObject
+   * Uses safer type checking to handle edge cases with custom elements
    */
   const getElement = useCallback((ref: HTMLElement | RefObject<HTMLElement> | null): Element | null => {
     if (!ref) return null;
     
-    // Si es un objeto con propiedad 'current', es un RefObject
-    if (typeof ref === "object" && "current" in ref) {
-      return ref.current;
+    // Safer check for RefObject that works with custom elements and libraries
+    if ((ref as RefObject<HTMLElement>).current !== undefined) {
+      return (ref as RefObject<HTMLElement>).current;
     }
     
-    // Si no, asumimos que es un elemento DOM directo
+    // If not a RefObject, assume it's a direct DOM element
     return ref as Element;
   }, []);
   
@@ -296,32 +320,68 @@ export function useContainerDimensions(args: UseContainerDimensionsArgs) {
     }, debounceMs);
   }, [containerRef, calculateDimensions, debounceMs, debug, getElement]);
 
-  // Efecto para crear y limpiar el Resize Observer
+  // Effect to set up and clean up ResizeObserver
   useLayoutEffect(() => {
-    // Obtener el elemento DOM del containerRef
+    // Get the DOM element from containerRef
     const element = getElement(containerRef);
-      
+    
     if (!element) return;
     
-    // Evitar crear un nuevo observer si el elemento no ha cambiado
+    // Avoid creating a new observer if the element hasn't changed
     if (lastObservedElement.current === element) return;
     
-    // Guardar referencia al elemento actual
+    // Save reference to the current element
     lastObservedElement.current = element;
     
-    // Limpiar observer previo si existe
+    // Clean up any existing timeout
     if (resizeTimeoutRef.current) {
       clearTimeout(resizeTimeoutRef.current);
       resizeTimeoutRef.current = null;
     }
 
-    const resizeObserver = new ResizeObserver(() => handleResize());
-    resizeObserver.observe(element);
+    // Check if ResizeObserver is available
+    if (typeof ResizeObserver === 'undefined') {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          '[useContainerDimensions] ResizeObserver is not available. ' +
+          'Falling back to window resize event. Some features may not work as expected.'
+        );
+      }
+      
+      // Fallback to window resize event
+      const handleWindowResize = () => handleResize();
+      window.addEventListener('resize', handleWindowResize, { passive: true });
+      
+      // Initial call to set initial values
+      handleResize();
+      
+      // Cleanup
+      return () => {
+        window.removeEventListener('resize', handleWindowResize);
+        if (resizeTimeoutRef.current) {
+          clearTimeout(resizeTimeoutRef.current);
+          resizeTimeoutRef.current = null;
+        }
+        lastObservedElement.current = null;
+      };
+    }
 
-    // Llamada inicial para establecer valores iniciales
-    handleResize();
+    // Use ResizeObserver if available
+    let resizeObserver: ResizeObserver;
+    try {
+      resizeObserver = new ResizeObserver(() => handleResize());
+      resizeObserver.observe(element);
+      
+      // Initial call to set initial values
+      handleResize();
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[useContainerDimensions] Failed to initialize ResizeObserver:', error);
+      }
+      return;
+    }
     
-    // Limpieza al desmontar
+    // Cleanup on unmount
     return () => {
       if (resizeTimeoutRef.current) {
         clearTimeout(resizeTimeoutRef.current);

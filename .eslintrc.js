@@ -20,6 +20,27 @@ module.exports = {
     ecmaVersion: 12,
     sourceType: 'module',
   },
+  overrides: [
+    {
+      files: ['**/*.css'],
+      extends: ['stylelint-config-standard'],
+      rules: {
+        'at-rule-no-unknown': [
+          true,
+          {
+            ignoreAtRules: [
+              'tailwind',
+              'apply',
+              'variants',
+              'responsive',
+              'screen',
+              'layer',
+            ],
+          },
+        ],
+      },
+    },
+  ],
   plugins: [
     'react',
     '@typescript-eslint',

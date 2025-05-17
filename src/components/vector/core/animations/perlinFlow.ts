@@ -6,6 +6,7 @@
 import { AnimatedVectorItem, AnimationSettings, PerlinFlowProps } from './animationTypes';
 import { getDefaultPropsForType } from './defaultProps';
 import { lerp } from '../utils/interpolation';
+import { fixPrecision } from '@/utils/precision';
 
 // Implementación simplificada de ruido Perlin para animaciones
 // Basada en el algoritmo de Ken Perlin con algunas simplificaciones
@@ -34,7 +35,9 @@ class PerlinNoise {
   
   // Función de suavizado para interpolación
   private fade(t: number): number {
-    return t * t * t * (t * (t * 6 - 15) + 10);
+    // Aplicar fixPrecision para evitar errores de precisión en el cálculo polinómico
+    const result = t * t * t * (t * (t * 6 - 15) + 10);
+    return fixPrecision(result, 6); // Alta precisión para esta función sensible
   }
   
   // Producto escalar entre un vector de gradiente y un vector de distancia
@@ -42,7 +45,8 @@ class PerlinNoise {
     const h = hash & 15;
     const u = h < 8 ? x : y;
     const v = h < 4 ? y : x;
-    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    const result = ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    return fixPrecision(result, 4); // Precisión controlada para el gradiente
   }
   
   // Calcula el valor de ruido Perlin para un punto 2D
@@ -105,43 +109,79 @@ export const updatePerlinFlow = (
   }
   
   // Calcular el tiempo normalizado para la animación
-  const time = currentTime * 0.001 * settings.baseSpeed * timeEvolutionSpeed;
+  const time = fixPrecision(currentTime * 0.001 * settings.baseSpeed * timeEvolutionSpeed, 4);
   
   // Calcular coordenadas de ruido para el vector actual
-  const noiseX = item.x * noiseScale;
-  const noiseY = item.y * noiseScale;
-  const noiseTime = time * 0.1;
+  // Usar baseX y baseY en lugar de x/y que no existen en AnimatedVectorItem
+  const noiseX = fixPrecision((item.baseX || 0) * noiseScale, 4);
+  const noiseY = fixPrecision((item.baseY || 0) * noiseScale, 4);
+  const noiseTime = fixPrecision(time * 0.1, 4);
   
   // Obtener dos valores de ruido ligeramente desplazados para crear un vector de flujo
   const noise1 = perlinInstance.noise(noiseX, noiseY + noiseTime);
   const noise2 = perlinInstance.noise(noiseX + noiseTime, noiseY);
   
   // Mapear los valores de ruido (-1 a 1) a un ángulo completo (0 a 2π)
-  const angleNoise = Math.atan2(noise2, noise1);
+  // Fijar precisión en los valores de ruido y el ángulo resultante
+  const noiseVal1 = fixPrecision(noise1, 4);
+  const noiseVal2 = fixPrecision(noise2, 4);
+  const angleRad = fixPrecision(Math.atan2(noiseVal2, noiseVal1), 6);
   
-  // Calcular el ángulo final aplicando el multiplicador
-  const targetAngle = angleNoise * angleMultiplier;
+  // Convertir a grados, aplicar multiplicador y normalizar al rango [0, 360)
+  let targetAngle = fixPrecision((angleRad * 180 / Math.PI) * angleMultiplier, 4);
+  targetAngle = ((targetAngle % 360) + 360) % 360;
   
   // Calcular un factor de longitud basado en la magnitud del vector de flujo
-  const magnitude = Math.sqrt(noise1 * noise1 + noise2 * noise2);
-  const lengthFactor = 0.8 + magnitude * 0.4;
-  const targetLength = item.originalLength * lengthFactor;
+  // Control de precisión para la magnitud y el factor de longitud
+  const magnitude = fixPrecision(Math.sqrt(noiseVal1 * noiseVal1 + noiseVal2 * noiseVal2), 4);
+  const newLengthFactor = fixPrecision(0.8 + magnitude * 0.4, 4);
+  // Usar el factor de longitud existente en el vector
+  const currentLengthFactor = fixPrecision(item.lengthFactor || 1.0, 4);
   
+  // Función para interpolación de ángulos que maneja correctamente el cruce por 0/360°
+  const interpolateAngles = (start: number, end: number, progress: number): number => {
+    // Asegurar que los ángulos estén en el rango [0, 360)
+    start = ((start % 360) + 360) % 360;
+    end = ((end % 360) + 360) % 360;
+    
+    // Calcular la distancia más corta entre los dos ángulos
+    let diff = end - start;
+    if (Math.abs(diff) > 180) {
+      diff = diff - (360 * Math.sign(diff));
+    }
+    
+    // Interpolar y normalizar el resultado
+    const result = start + diff * progress;
+    return ((result % 360) + 360) % 360;
+  };
+
   // Aplicar transición suave al ángulo si está habilitado
   let newAngle = targetAngle;
-  if (settings.angleTransition) {
-    newAngle = lerp(item.angle, targetAngle, 0.1);
+  if (settings.angleTransition && item.currentAngle !== undefined) {
+    const progress = Math.min(1.0, 0.1 * settings.baseSpeed);
+    newAngle = interpolateAngles(item.currentAngle, targetAngle, progress);
+  } else {
+    // Usar interpolación con precisión en el ángulo actual
+    newAngle = fixPrecision(lerp(item.currentAngle || 0, targetAngle, 0.1), 4);
   }
   
-  // Aplicar transición suave a la longitud si está habilitado
-  let newLength = targetLength;
+  // Aplicar transición suave al factor de longitud si está habilitado
+  let finalLengthFactor = newLengthFactor;
   if (settings.lengthTransition) {
-    newLength = lerp(item.length, targetLength, 0.1);
+    // Usar interpolación con precisión en el factor de longitud
+    // Usar fixPrecision para la interpolación de factores de longitud
+    finalLengthFactor = fixPrecision(lerp(currentLengthFactor, newLengthFactor, 0.1), 2);
   }
   
+  // Mantener el factor de ancho existente con precisión controlada
+  const newWidthFactor = fixPrecision(item.widthFactor || 1, 2);
+
   return {
     ...item,
-    angle: newAngle,
-    length: newLength
+    currentAngle: newAngle,                     // Actualizar el ángulo actual con precisión
+    targetAngle: targetAngle,                   // Guardar el ángulo objetivo con precisión
+    previousAngle: fixPrecision(item.currentAngle || 0, 4), // Guardar el ángulo anterior
+    lengthFactor: finalLengthFactor,            // Actualizar el factor de longitud con precisión
+    widthFactor: newWidthFactor                 // Mantener el factor de ancho con precisión
   };
 };

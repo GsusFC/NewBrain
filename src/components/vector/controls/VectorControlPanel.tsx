@@ -14,8 +14,8 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from '@/components/ui/accordion';
-import { Separator } from '@/components/ui/separator';
+} from '@/components/ui/accordion-headless';
+import { Separator } from '@/components/ui/separator-headless';
 
 export function VectorControlPanel() {
   const { settings, updateSettings, resetSettings } = useVectorControl();

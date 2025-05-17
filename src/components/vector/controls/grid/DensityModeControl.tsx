@@ -37,12 +37,15 @@ export function DensityModeControl({
   const [showCustomPanel, setShowCustomPanel] = useState(false);
   // Estado local para el ratio personalizado
   const [localCustomRatio, setLocalCustomRatio] = useState(customRatio);
+  
+  // Sincronizar cuando el padre cambia el ratio externamente
+  useEffect(() => {
+    setLocalCustomRatio(customRatio);
+  }, [customRatio]);
 
   // Inicializar panel si el ratio es custom cuando el componente se monta
   useEffect(() => {
-    if (aspectRatio === 'custom') {
-      setShowCustomPanel(true);
-    }
+    setShowCustomPanel(aspectRatio === 'custom');
   }, [aspectRatio]);
 
   // Manejador para cambios en el aspect ratio
@@ -165,12 +168,18 @@ export function DensityModeControl({
             onValueChange={(value) => {
               const rows = Math.max(1, value[0] || 1);
               
-              // Calcular nuevas columnas manteniendo exactamente el aspect ratio
+              // FIXME: Dimensiones hardcodeadas pueden producir cálculos incorrectos
+              // cuando el viewport real es diferente a estos valores de referencia.
+              // Opciones de mejora:
+              // 1. Recibir containerWidth/Height como props
+              // 2. Usar un ResizeObserver para medir el contenedor real
+              // 3. Obtener las dimensiones del store global si están disponibles
               const calculatedGrid = calculateOptimalGrid(
-                aspectRatio, // AspectRatioOption ya es el tipo correcto
+                aspectRatio,
                 aspectRatio === 'custom' ? localCustomRatio : undefined,
                 {
-                  containerWidth: 800, // Valores de referencia
+                  // Valores de referencia (no son las dimensiones reales del contenedor)
+                  containerWidth: 800, 
                   containerHeight: 600,
                   spacing: gridSettings.spacing || 30,
                   margin: gridSettings.margin || 20,

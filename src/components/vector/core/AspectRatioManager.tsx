@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { SliderWithInput } from "@/components/ui/slider-with-input";
-import { AspectRatioOption, GridSettings } from "./types";
+import { AspectRatioOption, GridSettings, Mode } from "./types";
 import { useAspectRatioCalculator } from "@/hooks/vector/useAspectRatioCalculator";
 import { cn } from "@/lib/utils";
 
@@ -35,17 +35,23 @@ export function AspectRatioManager({
   disabled = false,
 }: AspectRatioManagerProps) {
   // Estado para controlar el modo de funcionamiento (aspect ratio fijo o densidad de vectores)
-  const [mode, setMode] = useState<'aspect-fixed' | 'density'>('aspect-fixed');
+  const [mode, setMode] = useState<Mode>('aspect-fixed');
 
   // Estados para configuración
-  const [aspectRatio, setAspectRatio] =
-    useState<AspectRatioOption>(initialAspectRatio);
-  const [gridSettings, setGridSettings] =
-    useState<GridSettings>(initialGridSettings);
-  const [localCustomRatio, setLocalCustomRatio] = useState<{
-    width: number;
-    height: number;
-  }>(customAspectRatio || { width: 16, height: 9 });
+  const [aspectRatio, setAspectRatio] = useState<AspectRatioOption>(initialAspectRatio);
+  const [gridSettings, setGridSettings] = useState<GridSettings>({
+    rows: Math.max(1, initialGridSettings.rows ?? 1),
+    cols: Math.max(1, initialGridSettings.cols ?? 1),
+    spacing: initialGridSettings.spacing ?? 30,
+    margin: initialGridSettings.margin ?? 20,
+    vectorsPerFlock: initialGridSettings.vectorsPerFlock,
+    userSvg: initialGridSettings.userSvg,
+    userSvgPreserveAspectRatio: initialGridSettings.userSvgPreserveAspectRatio,
+  });
+  
+  const [localCustomRatio, setLocalCustomRatio] = useState<{ width: number; height: number }>(
+    customAspectRatio || { width: 16, height: 9 }
+  );
 
   // Estado para panel de ratio personalizado
   const [customPanelOpen, setCustomPanelOpen] = useState(false);
@@ -70,6 +76,16 @@ export function AspectRatioManager({
     ],
   );
 
+  // Calcular el máximo de filas/columnas basado en el tamaño del contenedor
+  const { maxRows, maxCols } = useMemo(() => {
+    // Incluir el espaciado y 2px para bordes en el cálculo del tamaño mínimo de celda
+    const minCellSize = (gridSettings.spacing ?? 30) + 2;
+    return {
+      maxRows: Math.max(1, Math.floor(containerHeight / minCellSize)),
+      maxCols: Math.max(1, Math.floor(containerWidth / minCellSize))
+    };
+  }, [containerWidth, containerHeight, gridSettings.spacing]);
+
   // Memoizar la llamada a onConfigChange para reducir recreaciones
   const updateConfig = useCallback(
     (newConfig: {
@@ -84,13 +100,18 @@ export function AspectRatioManager({
         newConfig.gridSettings.cols !== gridSettings.cols ||
         newConfig.gridSettings.spacing !== gridSettings.spacing ||
         newConfig.gridSettings.margin !== gridSettings.margin;
+      
+      const customAspectRatioChanged = 
+        newConfig.customAspectRatio && 
+        (newConfig.customAspectRatio.width !== localCustomRatio.width ||
+         newConfig.customAspectRatio.height !== localCustomRatio.height);
 
       // Solo notificar si hay cambios reales
-      if (aspectRatioChanged || gridChanged) {
+      if (aspectRatioChanged || gridChanged || customAspectRatioChanged) {
         onConfigChange(newConfig);
       }
     },
-    [onConfigChange, aspectRatio, gridSettings],
+    [onConfigChange, aspectRatio, gridSettings, localCustomRatio],
   );
 
   // Cuando cambia el modo, recalcular según corresponda
@@ -123,7 +144,7 @@ export function AspectRatioManager({
     } else if (mode === "density") {
       // En modo densidad, mantener las filas definidas por el usuario
       // y calcular proporcionalmente las columnas según el aspect ratio seleccionado
-      const userDensity = gridSettings.rows;
+      const userDensity = Math.max(1, gridSettings.rows ?? 1);
       
       // Usar el calculate con el parámetro density
       const densityAdjustedGrid = calculateOptimalGrid(
@@ -135,12 +156,20 @@ export function AspectRatioManager({
         }
       );
 
-      // Solo actualizar si cambiaron las columnas (lo importante es no cambiar las filas)
-      if (densityAdjustedGrid.cols !== gridSettings.cols) {
-        // Mantener las filas originales del usuario
+      // Verificar si hay cambios en la configuración de la cuadrícula
+      const hasChanges = 
+        densityAdjustedGrid.cols !== gridSettings.cols ||
+        densityAdjustedGrid.spacing !== gridSettings.spacing ||
+        densityAdjustedGrid.margin !== gridSettings.margin;
+      
+      if (hasChanges) {
+        // Mantener las filas originales del usuario pero actualizar otras propiedades
         const updatedGrid = {
           ...densityAdjustedGrid,
           rows: userDensity,
+          // Asegurarse de mantener el espaciado y márgenes actuales si no se especifican
+          spacing: gridSettings.spacing,
+          margin: gridSettings.margin
         };
 
         setGridSettings(updatedGrid);
@@ -151,8 +180,8 @@ export function AspectRatioManager({
             aspectRatio === "custom" ? localCustomRatio : undefined,
         });
       }
-    } else {
-      // En modo cuadrícula fija, detectar el aspect ratio más cercano
+} else if (mode === 'manual') {
+  // En modo cuadrícula fija …
       const { aspectRatio: detectedRatio } =
         detectAspectRatioFromGrid(gridSettings);
 
@@ -175,9 +204,7 @@ export function AspectRatioManager({
     aspectRatio,
     localCustomRatio,
     calculationParams, // Usar el objeto memoizado en lugar de valores individuales
-    gridSettings, // Añadimos gridSettings completo como dependencia
-    gridSettings.rows, 
-    gridSettings.cols,
+  gridSettings, // sufficient – remove the primitives
     calculateOptimalGrid,
     detectAspectRatioFromGrid,
     updateConfig, // Usar la función memoizada
@@ -350,6 +377,8 @@ export function AspectRatioManager({
               )}
               onClick={() => setMode("aspect-fixed")}
               disabled={disabled}
+              aria-label="Cambiar a modo ratio fijo"
+              aria-pressed={mode === "aspect-fixed"}
             >
               Ratio fijo
             </button>
@@ -362,18 +391,22 @@ export function AspectRatioManager({
               )}
               onClick={() => setMode("density")}
               disabled={disabled}
+              aria-label="Cambiar a modo de densidad"
+              aria-pressed={mode === "density"}
             >
               Densidad
             </button>
             <button
               className={cn(
                 "px-2 py-1 transition-colors",
-                mode === "density"
+                mode === "manual"
                   ? "bg-slate-600 text-white"
                   : "text-slate-400 hover:text-white"
               )}
-              onClick={() => setMode("density")}
+              onClick={() => setMode("manual")}
               disabled={disabled}
+              aria-label="Cambiar a modo manual"
+              aria-pressed={mode === "manual"}
             >
               Manual
             </button>
@@ -462,35 +495,37 @@ export function AspectRatioManager({
           {customPanelOpen && (
             <div className="custom-ratio-panel mt-2 p-2 bg-slate-800 rounded-md">
               <div className="flex items-center gap-2">
-                <SliderWithInput
-                  min={1}
-                  max={100}
-                  step={1}
-                  precision={0}
-                  value={[localCustomRatio.width]}
-                  onValueChange={(value) => {
-                    const width = Math.max(1, value[0] || 1);
-                    handleCustomRatioChange({ ...localCustomRatio, width });
-                  }}
-                  className="w-24"
-                  inputClassName="w-16 bg-slate-700 border border-slate-600 rounded-sm px-2 py-1 text-xs text-white"
-                  disabled={disabled}
-                />
+                  <SliderWithInput
+                    min={1}
+                    max={maxCols}
+                    step={1}
+                    precision={0}
+                    value={[Math.min(localCustomRatio.width, maxCols)]}
+                    onValueChange={(value) => {
+                      const width = Math.max(1, Math.min(value[0] || 1, maxCols));
+                      handleCustomRatioChange({ ...localCustomRatio, width });
+                    }}
+                    className="w-24"
+                    inputClassName="w-16 bg-slate-700 border border-slate-600 rounded-sm px-2 py-1 text-xs text-white"
+                    disabled={disabled}
+                    aria-label="Ancho del ratio personalizado"
+                  />
                 <span className="text-xs text-slate-300">:</span>
-                <SliderWithInput
-                  min={1}
-                  max={100}
-                  step={1}
-                  precision={0}
-                  value={[localCustomRatio.height]}
-                  onValueChange={(value) => {
-                    const height = Math.max(1, value[0] || 1);
-                    handleCustomRatioChange({ ...localCustomRatio, height });
-                  }}
-                  className="w-24"
-                  inputClassName="w-16 bg-slate-700 border border-slate-600 rounded-sm px-2 py-1 text-xs text-white"
-                  disabled={disabled}
-                />
+                  <SliderWithInput
+                    min={1}
+                    max={maxRows}
+                    step={1}
+                    precision={0}
+                    value={[Math.min(localCustomRatio.height, maxRows)]}
+                    onValueChange={(value) => {
+                      const height = Math.max(1, Math.min(value[0] || 1, maxRows));
+                      handleCustomRatioChange({ ...localCustomRatio, height });
+                    }}
+                    className="w-24"
+                    inputClassName="w-16 bg-slate-700 border border-slate-600 rounded-sm px-2 py-1 text-xs text-white"
+                    disabled={disabled}
+                    aria-label="Alto del ratio personalizado"
+                  />
 
                 <button
                   type="button"
@@ -541,7 +576,7 @@ export function AspectRatioManager({
                     "aspect-ratio-button relative py-1 px-2 rounded-sm text-xs border transition-colors",
                     aspectRatio === "1:1"
                       ? "bg-slate-700 border-slate-500"
-                      : "bg-slate-800 border-slate-700",
+                      : "bg-slate-800 border-border",
                   )}
                   disabled={disabled}
                 >
@@ -554,7 +589,7 @@ export function AspectRatioManager({
                     "aspect-ratio-button relative py-1 px-2 rounded-sm text-xs border transition-colors",
                     aspectRatio === "16:9"
                       ? "bg-slate-700 border-slate-500"
-                      : "bg-slate-800 border-slate-700",
+                      : "bg-slate-800 border-border",
                   )}
                   disabled={disabled}
                 >
@@ -570,7 +605,7 @@ export function AspectRatioManager({
                     "aspect-ratio-button relative py-1 px-2 rounded-sm text-xs border transition-colors",
                     aspectRatio === "2:1"
                       ? "bg-slate-700 border-slate-500"
-                      : "bg-slate-800 border-slate-700",
+                      : "bg-slate-800 border-border",
                   )}
                   disabled={disabled}
                 >
@@ -586,7 +621,7 @@ export function AspectRatioManager({
                     "aspect-ratio-button relative py-1 px-2 rounded-sm text-xs border transition-colors",
                     aspectRatio === "custom"
                       ? "bg-slate-700 border-slate-500"
-                      : "bg-slate-800 border-slate-700",
+                      : "bg-slate-800 border-border",
                   )}
                   disabled={disabled}
                 >
@@ -635,22 +670,27 @@ export function AspectRatioManager({
 
             {/* Control de densidad (filas) */}
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-300 w-16">
+              <label htmlFor="rows-slider" className="text-xs font-medium text-slate-300 w-16">
                 Filas:
-              </span>
+              </label>
               <SliderWithInput
+                id="rows-slider"
                 min={1}
-                max={100}
+                max={maxRows}
                 step={1}
                 precision={0}
-                value={[gridSettings.rows]}
+                value={[Math.min(gridSettings.rows || 1, maxRows)]}
                 onValueChange={(value) => {
-                  const rows = Math.max(1, value[0] || 1);
+                  const rows = Math.max(1, Math.min(value[0] || 1, maxRows));
                   handleGridSettingsChange({ rows });
                 }}
                 className="w-32"
                 inputClassName="w-20 bg-slate-700 border border-slate-600 rounded-sm px-2 py-1 text-xs text-white"
                 disabled={disabled}
+                aria-label="Número de filas"
+                aria-valuemin={1}
+                aria-valuemax={maxRows}
+                aria-valuenow={Math.min(gridSettings.rows || 1, maxRows)}
               />
             </div>
 
@@ -659,7 +699,7 @@ export function AspectRatioManager({
               <span className="text-xs font-medium text-slate-300 w-16">
                 Columnas:
               </span>
-              <div className="flex items-center h-6 px-2 bg-slate-700/50 rounded-sm border border-slate-700 text-xs text-slate-300">
+              <div className="flex items-center h-6 px-2 bg-slate-700/50 rounded-sm border border-border text-xs text-slate-300">
                 <span className="font-medium">{gridSettings.cols}</span>
                 <span className="ml-1 text-slate-400">(calculadas)</span>
               </div>
@@ -693,17 +733,21 @@ export function AspectRatioManager({
               </span>
               <SliderWithInput
                 min={1}
-                max={100}
+                max={maxRows}
                 step={1}
                 precision={0}
                 value={[gridSettings.rows]}
                 onValueChange={(value) => {
-                  const rows = Math.max(1, value[0] || 1);
+                  const rows = Math.max(1, value[0] ?? 1);
                   handleGridSettingsChange({ rows });
                 }}
                 className="w-32"
                 inputClassName="w-20 bg-slate-700 border border-slate-600 rounded-sm px-2 py-1 text-xs text-white"
                 disabled={disabled}
+                aria-valuemin={1}
+                aria-valuemax={maxRows}
+                aria-valuenow={gridSettings.rows}
+                aria-label="Número de filas"
               />
             </div>
 
@@ -713,17 +757,21 @@ export function AspectRatioManager({
               </span>
               <SliderWithInput
                 min={1}
-                max={100}
+                max={maxCols}
                 step={1}
                 precision={0}
                 value={[gridSettings.cols]}
                 onValueChange={(value) => {
-                  const cols = Math.max(1, value[0] || 1);
+                  const cols = Math.max(1, value[0] ?? 1);
                   handleGridSettingsChange({ cols });
                 }}
                 className="w-32"
                 inputClassName="w-20 bg-slate-700 border border-slate-600 rounded-sm px-2 py-1 text-xs text-white"
                 disabled={disabled}
+                aria-valuemin={1}
+                aria-valuemax={maxCols}
+                aria-valuenow={gridSettings.cols}
+                aria-label="Número de columnas"
               />
             </div>
 

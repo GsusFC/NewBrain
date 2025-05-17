@@ -10,6 +10,8 @@ import { ColorPicker } from "./color-picker";
 import { GradientStop } from "../vector/core/color-types";
 
 interface GradientPickerProps {
+  /** Etiqueta opcional que se muestra encima del selector de gradiente */
+  label?: string;
   angle: number;
   stops: GradientStop[];
   onAngleChange: (angle: number) => void;
@@ -19,6 +21,7 @@ interface GradientPickerProps {
 }
 
 export function GradientPicker({
+  label,
   angle,
   stops,
   onAngleChange,
@@ -113,15 +116,18 @@ export function GradientPicker({
 
   return (
     <div className={cn("space-y-4", className)}>
+      {label && <Label>{label}</Label>}
       <div className="space-y-4">
         <div>
-          <Label>Ángulo</Label>
+          <Label>Ángulo del degradado</Label>
           <div className="mt-2 grid grid-cols-4 gap-2">
             {[0, 45, 90, 135].map((deg) => (
               <Button
                 key={deg}
                 variant={angle === deg ? "default" : "outline"}
-                className="p-0 h-8"
+                className={cn("p-0 h-8 transition-all", {
+                  "ring-1 ring-primary/50": angle === deg,
+                })}
                 onClick={() => onAngleChange(deg)}
                 disabled={disabled}
               >
@@ -135,7 +141,7 @@ export function GradientPicker({
           <Label>Previsualización</Label>
           <div
             ref={gradientContainerRef}
-            className="relative h-8 rounded"
+            className="relative h-8 rounded border border-border shadow-inner"
             style={gradientStyle}
           >
             {sortedStops.map((stop, index) => (
@@ -147,7 +153,7 @@ export function GradientPicker({
                   "flex items-center justify-center",
                   draggingIndex === index
                     ? "cursor-grabbing z-20"
-                    : "cursor-grab hover:z-10"
+                    : "cursor-grab hover:z-10 hover:scale-110 transition-transform"
                 )}
                 style={{
                   left: `${stop.position}%`,
@@ -156,7 +162,7 @@ export function GradientPicker({
                 disabled={disabled}
               >
                 <div
-                  className="w-4 h-4 rounded-full border-2 border-white shadow-md"
+                  className="w-4 h-4 rounded-full border-2 border-white shadow-[0_0_3px_rgba(0,0,0,0.5)] ring-1 ring-black/30"
                   style={{ backgroundColor: stop.color }}
                 />
               </button>
@@ -175,6 +181,7 @@ export function GradientPicker({
             size="sm"
             onClick={addStop}
             disabled={disabled || stops.length >= 5}
+            className="hover:bg-primary/10 hover:text-primary focus-visible:bg-primary/10"
           >
             Añadir
           </Button>
@@ -206,7 +213,7 @@ export function GradientPicker({
               size="sm"
               onClick={() => removeStop(index)}
               disabled={disabled || stops.length <= 2}
-              className="px-2 h-10"
+              className="px-2 h-10 hover:bg-destructive/20 hover:text-destructive transition-colors"
             >
               ×
             </Button>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs-headless';
 import { Card, CardContent } from '@/components/ui/card';
 import { ColorPicker } from '@/components/ui/color-picker';
 import { GradientPicker } from '@/components/ui/gradient-picker';
@@ -18,6 +18,11 @@ interface ColorControlProps {
   onChange: (value: VectorColorValue) => void;
   disabled?: boolean;
   className?: string;
+  /** 
+   * Si es true, el ángulo se ajustará a los valores más cercanos (0, 45, 90, 135 grados).
+   * Si es false, se usará el ángulo exacto. Por defecto es false.
+   */
+  snapAngle?: boolean;
 }
 
 /**
@@ -28,7 +33,8 @@ export function ColorControl({
   value, 
   onChange, 
   disabled = false,
-  className
+  className,
+  snapAngle = false
 }: ColorControlProps) {
   // Verificar si el valor es una función (no soportada por este control)
   const isFunction = typeof value === 'function';
@@ -59,7 +65,8 @@ export function ColorControl({
     // Convertir stops de formato sistema (offset: 0-1) a formato UI (position: 0-100)
     const uiStops = sysGradient.stops.map(stop => ({
       color: stop.color,
-      position: Math.round(stop.offset * 100)
+      position: Math.round(stop.offset * 100),
+      id: Math.random().toString(36).substr(2, 9)
     }));
 
     // Calcular ángulo basado en coordenadas
@@ -75,18 +82,24 @@ export function ColorControl({
       angle = Math.round(((angleRad * 180) / Math.PI + 360) % 360);
     }
 
-    // Normalizar ángulo a los valores preestablecidos más cercanos (0, 45, 90, 135)
-    const angles = [0, 45, 90, 135];
-    const closestAngle = angles.reduce((prev, curr) => 
-      (Math.abs(curr - angle) < Math.abs(prev - angle) ? curr : prev)
-    );
+    // Aplicar snapping de ángulo si está habilitado
+    const snapToNearestAngle = (angle: number): number => {
+      if (!snapAngle) return angle;
+      
+      const angles = [0, 45, 90, 135, 180, 225, 270, 315];
+      return angles.reduce((prev, curr) => 
+        (Math.abs(curr - angle) < Math.abs(prev - angle) ? curr : prev)
+      );
+    };
+    
+    const finalAngle = snapToNearestAngle(angle);
 
     return {
       type: 'linear',
-      angle: closestAngle,
+      angle: finalAngle,
       stops: uiStops
     };
-  }, []);
+  }, [snapAngle]);
   
   // Función para convertir formato UI a GradientConfig para el sistema
   const convertToSystemGradient = useCallback((uiGradient: ColorControlGradient): GradientConfig => {
@@ -135,9 +148,16 @@ export function ColorControl({
       setColorType('gradient');
       const uiGradient = convertFromSystemGradient(effectiveValue as GradientConfig);
       setAngle(uiGradient.angle);
-      setStops(uiGradient.stops);
+      setStops(prev => (
+        // Solo actualizar si los stops realmente cambiaron
+        JSON.stringify(prev) !== JSON.stringify(uiGradient.stops) 
+          ? uiGradient.stops 
+          : prev
+      ));
     }
-  }, [effectiveValue, isFunction, convertFromSystemGradient]);
+    // convertFromSystemGradient es estable mientras snapAngle no cambie
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveValue, isFunction, snapAngle]);
   
   // Manejar cambio de tipo y color
   const handleColorTypeChange = useCallback((type: 'solid' | 'gradient') => {
@@ -182,6 +202,7 @@ export function ColorControl({
               />
             ) : (
               <GradientPicker
+                label={label}
                 angle={angle}
                 stops={stops}
                 onAngleChange={(newAngle) => {

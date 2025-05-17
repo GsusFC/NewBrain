@@ -1,6 +1,6 @@
 /**
- * Propiedades predeterminadas para todas las animaciones
- * Centraliza la configuración predeterminada para mejorar la mantenibilidad
+ * Default properties for all animations
+ * Centralizes default configuration to improve maintainability
  */
 
 import { 
@@ -14,13 +14,33 @@ import {
   PerlinFlowProps,
   RandomLoopProps,
   CenterPulseProps,
-  AnimationType
+  AnimationType,
+  AnimationSettings
 } from './animationTypes';
 
 /**
- * Configuración predeterminada para la animación SmoothWaves
+ * Map each AnimationType to its corresponding props interface
+ * This provides full type safety when accessing default props
  */
-const SMOOTH_WAVES_DEFAULTS: SmoothWavesProps = {
+interface AnimationPropsMap {
+  smoothWaves: SmoothWavesProps;
+  seaWaves: SeaWavesProps;
+  mouseInteraction: MouseInteractionProps;
+  directionalFlow: DirectionalFlowProps;
+  flocking: FlockingProps;
+  vortex: VortexProps;
+  lissajous: LissajousProps;
+  perlinFlow: PerlinFlowProps;
+  randomLoop: RandomLoopProps;
+  centerPulse: CenterPulseProps;
+  // 'none' has no props
+  none: Record<string, never>;
+}
+
+/**
+ * Default configuration for SmoothWaves animation
+ */
+const SMOOTH_WAVES_DEFAULTS = Object.freeze<SmoothWavesProps>({
   waveFrequency: 0.0002,
   waveAmplitude: 20,
   baseAngle: 0,
@@ -29,43 +49,43 @@ const SMOOTH_WAVES_DEFAULTS: SmoothWavesProps = {
   waveType: 'circular',
   centerX: 0.5,
   centerY: 0.5,
-};
+});
 
 /**
- * Configuración predeterminada para la animación SeaWaves
+ * Default configuration for SeaWaves animation
  */
-const SEA_WAVES_DEFAULTS: SeaWavesProps = {
+const SEA_WAVES_DEFAULTS = Object.freeze<SeaWavesProps>({
   baseFrequency: 0.0004,
   baseAmplitude: 25,
   rippleFrequency: 0.001,
   rippleAmplitude: 10,
   choppiness: 0.3,
   spatialFactor: 0.01,
-};
+});
 
 /**
- * Configuración predeterminada para la animación MouseInteraction
+ * Default configuration for MouseInteraction animation
  */
-const MOUSE_INTERACTION_DEFAULTS: MouseInteractionProps = {
+const MOUSE_INTERACTION_DEFAULTS = Object.freeze<MouseInteractionProps>({
   interactionRadius: 150,
   effectType: 'attract',
   effectStrength: 1.0,
   falloffFactor: 0.5,
-};
+});
 
 /**
- * Configuración predeterminada para la animación DirectionalFlow
+ * Default configuration for DirectionalFlow animation
  */
-const DIRECTIONAL_FLOW_DEFAULTS: DirectionalFlowProps = {
+const DIRECTIONAL_FLOW_DEFAULTS = Object.freeze<DirectionalFlowProps>({
   flowAngle: 0,
   flowSpeed: 1.0,
   turbulence: 0.2,
-};
+});
 
 /**
- * Configuración predeterminada para la animación Flocking
+ * Default configuration for Flocking animation
  */
-const FLOCKING_DEFAULTS: FlockingProps = {
+const FLOCKING_DEFAULTS = Object.freeze<FlockingProps>({
   perceptionRadius: 100,
   maxSpeed: 2.0,
   separationForce: 0.05,
@@ -74,52 +94,52 @@ const FLOCKING_DEFAULTS: FlockingProps = {
   targetSeekingForce: 0.01,
   targetX: 0.5,
   targetY: 0.5,
-};
+});
 
 /**
- * Configuración predeterminada para la animación Vortex
+ * Default configuration for Vortex animation
  */
-const VORTEX_DEFAULTS: VortexProps = {
+const VORTEX_DEFAULTS = Object.freeze<VortexProps>({
   vortexCenterX: 0.5,
   vortexCenterY: 0.5,
   strength: 1.0,
   radiusFalloff: 0.9,
   swirlDirection: 'clockwise',
-};
+});
 
 /**
- * Configuración predeterminada para la animación Lissajous
+ * Default configuration for Lissajous animation
  */
-const LISSAJOUS_DEFAULTS: LissajousProps = {
+const LISSAJOUS_DEFAULTS = Object.freeze<LissajousProps>({
   xFrequency: 0.5,
   yFrequency: 1.0,
   xAmplitude: 1.0,
   yAmplitude: 1.0,
   phaseOffset: 0,
   timeSpeed: 1.0,
-};
+});
 
 /**
- * Configuración predeterminada para la animación PerlinFlow
+ * Default configuration for PerlinFlow animation
  */
-const PERLIN_FLOW_DEFAULTS: PerlinFlowProps = {
+const PERLIN_FLOW_DEFAULTS = Object.freeze<PerlinFlowProps>({
   noiseScale: 0.01,
   timeEvolutionSpeed: 0.5,
   angleMultiplier: 1.0,
-};
+});
 
 /**
- * Configuración predeterminada para la animación RandomLoop
+ * Default configuration for RandomLoop animation
  */
-const RANDOM_LOOP_DEFAULTS: RandomLoopProps = {
+const RANDOM_LOOP_DEFAULTS = Object.freeze<RandomLoopProps>({
   intervalMs: 2000,
   transitionDurationFactor: 0.5,
-};
+});
 
 /**
- * Configuración predeterminada para la animación CenterPulse
+ * Default configuration for CenterPulse animation
  */
-const CENTER_PULSE_DEFAULTS: CenterPulseProps = {
+const CENTER_PULSE_DEFAULTS = Object.freeze<CenterPulseProps>({
   pulseDuration: 1000,
   pulseCenter: { x: 0.5, y: 0.5 },
   maxDistanceFactor: 1.5,
@@ -130,14 +150,14 @@ const CENTER_PULSE_DEFAULTS: CenterPulseProps = {
   continuousMode: false,
   pulseInterval: 3000,
   fadeOutFactor: 0.9,
-  maxActivePulses: 3, // Limite predeterminado de pulsos activos
-};
+  maxActivePulses: 3, // Default limit of active pulses
+});
 
 /**
- * Mapa de propiedades predeterminadas para todos los tipos de animación
- * Facilita el acceso a la configuración predeterminada para cualquier tipo de animación
+ * Map of default properties for all animation types
+ * Provides type-safe access to default configuration for any animation type
  */
-export const DEFAULT_ANIMATION_PROPS: Record<string, unknown> = {
+export const DEFAULT_ANIMATION_PROPS = Object.freeze<AnimationPropsMap>({
   smoothWaves: SMOOTH_WAVES_DEFAULTS,
   seaWaves: SEA_WAVES_DEFAULTS,
   mouseInteraction: MOUSE_INTERACTION_DEFAULTS,
@@ -148,13 +168,59 @@ export const DEFAULT_ANIMATION_PROPS: Record<string, unknown> = {
   perlinFlow: PERLIN_FLOW_DEFAULTS,
   randomLoop: RANDOM_LOOP_DEFAULTS,
   centerPulse: CENTER_PULSE_DEFAULTS,
-};
+  none: {},
+});
 
 /**
- * Recupera las propiedades predeterminadas para un tipo de animación específico
- * @param type - Tipo de animación
- * @returns Propiedades predeterminadas para el tipo de animación
+ * Retrieves the default properties for a specific animation type
+ * @param type - The animation type to get defaults for
+ * @returns Default properties for the specified animation type
  */
-export const getDefaultPropsForType = <T>(type: AnimationType): Partial<T> => {
-  return (DEFAULT_ANIMATION_PROPS[type] || {}) as Partial<T>;
+/**
+ * Retrieves the default properties for a specific animation type
+ * @param type - The animation type to get defaults for
+ * @returns Default properties for the specified animation type
+ */
+export function getDefaultPropsForType<T extends AnimationType>(
+  type: T
+): T extends keyof AnimationPropsMap ? Readonly<AnimationPropsMap[T]> : never {
+  return (DEFAULT_ANIMATION_PROPS as any)[type] ?? {};
+}
+
+/**
+ * Type guard to check if a value is a valid animation type
+ * @param value - The value to check
+ * @returns True if the value is a valid animation type
+ */
+export function isAnimationType(value: string): value is AnimationType {
+  return value in DEFAULT_ANIMATION_PROPS || value === 'none';
+}
+
+/**
+ * Gets the default animation settings for a given animation type
+ * @param type - The animation type to get settings for
+ * @returns Default settings for the specified animation type
+ */
+export const getDefaultAnimationSettings = (
+  type: AnimationType
+): Readonly<AnimationSettings> => {
+  const baseSettings: AnimationSettings = {
+    type,
+    baseSpeed: 1.0,
+    canvasWidth: 0,
+    canvasHeight: 0,
+    mouseX: null,
+    mouseY: null,
+    isMouseDown: false,
+    resetOnTypeChange: true,
+    seed: Math.floor(Math.random() * 10000),
+    colorTransition: true,
+    lengthTransition: true,
+    angleTransition: true,
+  };
+
+  return Object.freeze({
+    ...baseSettings,
+    ...getDefaultPropsForType(type)
+  });
 };

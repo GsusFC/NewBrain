@@ -1,20 +1,21 @@
 /**
- * Animación de flujo direccional (Directional Flow)
- * Crea un patrón de flujo en una dirección específica con variaciones turbulentas
+ * Directional Flow Animation
+ * Creates a flow pattern in a specific direction with turbulent variations
  */
 
 import { AnimatedVectorItem, AnimationSettings, DirectionalFlowProps } from './animationTypes';
 import { getDefaultPropsForType } from './defaultProps';
 import { degreesToRadians } from '../utils/math';
 import { lerp } from '../utils/interpolation';
+import { fixPrecision } from '@/utils/precision';
 
 /**
- * Actualiza un vector según la animación de flujo direccional
- * @param item - Vector a actualizar
- * @param currentTime - Tiempo actual en milisegundos
- * @param props - Propiedades específicas de la animación de flujo direccional
- * @param settings - Configuración general de la animación
- * @returns Vector actualizado
+ * Updates a vector according to directional flow animation
+ * @param item - Vector to update
+ * @param currentTime - Current time in milliseconds
+ * @param props - Specific properties for directional flow animation
+ * @param settings - General animation settings
+ * @returns Updated vector
  */
 export const updateDirectionalFlow = (
   item: AnimatedVectorItem,
@@ -22,53 +23,66 @@ export const updateDirectionalFlow = (
   props: Partial<DirectionalFlowProps>,
   settings: AnimationSettings
 ): AnimatedVectorItem => {
-  // Obtener propiedades con valores predeterminados
-  const defaultProps = getDefaultPropsForType<DirectionalFlowProps>('directionalFlow');
+  // Get properties with default values
+  const defaultProps = getDefaultPropsForType('directionalFlow');
   const {
-    flowAngle = defaultProps.flowAngle || 0,
-    flowSpeed = defaultProps.flowSpeed || 1.0,
-    turbulence = defaultProps.turbulence || 0.2
-  } = props;
+    flowAngle = 0,
+    flowSpeed = 1.0,
+    turbulence = 0.2
+  } = { ...defaultProps, ...props } as DirectionalFlowProps;
 
-  // Convertir el ángulo de flujo a radianes
-  const flowAngleRadians = degreesToRadians(flowAngle);
+  // Convert flow angle to radians with controlled precision
+  const flowAngleRadians = fixPrecision(degreesToRadians(flowAngle), 6);
   
-  // Calcular el tiempo normalizado para la animación
-  const time = currentTime * 0.001 * settings.baseSpeed * flowSpeed;
+  // Calculate normalized time for animation with controlled precision
+  const time = fixPrecision(currentTime * 0.001 * settings.baseSpeed * flowSpeed, 4);
   
-  // Normalizar la posición del vector en el lienzo
-  const normalizedX = item.x / settings.canvasWidth;
-  const normalizedY = item.y / settings.canvasHeight;
+  // Normalize vector position on the canvas with controlled precision
+  const canvasWidth = settings.canvasWidth || 1000;
+  const canvasHeight = settings.canvasHeight || 1000;
+  const normalizedX = fixPrecision(item.baseX / canvasWidth, 4);
+  const normalizedY = fixPrecision(item.baseY / canvasHeight, 4);
   
-  // Calcular factor de turbulencia basado en la posición y el tiempo
-  // Esto crea variaciones en el ángulo del flujo para simular turbulencia
-  const turbulenceFactor = Math.sin(normalizedX * 10 + time) * 
-                          Math.cos(normalizedY * 10 + time * 0.7) * 
-                          turbulence;
+  // Calculate turbulence factor based on position and time with controlled precision
+  // This creates variations in the flow angle to simulate turbulence
+  const turbulenceFactor = fixPrecision(
+    Math.sin(normalizedX * 10 + time) * 
+    Math.cos(normalizedY * 10 + time * 0.7) * 
+    turbulence, 
+    4
+  );
   
-  // Calcular el ángulo final sumando la turbulencia al ángulo base
-  const targetAngle = flowAngleRadians + turbulenceFactor;
+  // Calculate final angle by adding turbulence to the base angle with controlled precision
+  const targetAngle = fixPrecision(flowAngleRadians + turbulenceFactor, 4);
   
-  // Aplicar transición suave al ángulo si está habilitado
+  // Apply smooth angle transition if enabled
   let newAngle = targetAngle;
   if (settings.angleTransition) {
-    newAngle = lerp(item.angle, targetAngle, 0.1);
+    // Use current angle with controlled precision
+    newAngle = fixPrecision(lerp(item.currentAngle || 0, targetAngle, 0.1), 4);
   }
   
-  // Calcular factor de longitud basado en la turbulencia
-  // La longitud aumenta ligeramente en áreas de baja turbulencia
-  const lengthFactor = 1 + Math.abs(turbulenceFactor) * 0.2;
-  const targetLength = item.originalLength * lengthFactor;
+  // Calculate length factor based on turbulence with controlled precision
+  // Length increases slightly in low turbulence areas
+  const newLengthFactor = fixPrecision(1 + Math.abs(turbulenceFactor) * 0.2, 4);
+  // Get current length factor with a safe default value
+  const currentLengthFactor = fixPrecision(item.lengthFactor || 1.0, 4);
   
-  // Aplicar transición suave a la longitud si está habilitado
-  let newLength = targetLength;
+  // Apply smooth length factor transition if enabled
+  let finalLengthFactor = newLengthFactor;
   if (settings.lengthTransition) {
-    newLength = lerp(item.length, targetLength, 0.1);
+    finalLengthFactor = fixPrecision(lerp(currentLengthFactor, newLengthFactor, 0.1), 4);
   }
+  
+  // Maintain existing width factor with controlled precision
+  const newWidthFactor = fixPrecision(item.widthFactor || 1.0, 4);
   
   return {
     ...item,
-    angle: newAngle,
-    length: newLength
+    currentAngle: newAngle,                       // Update current angle with precision
+    targetAngle: targetAngle,                     // Save target angle with precision
+    previousAngle: fixPrecision(item.currentAngle || 0, 4),   // Save previous angle
+    lengthFactor: finalLengthFactor,              // Update length factor with precision
+    widthFactor: newWidthFactor                   // Maintain width factor with precision
   };
 };

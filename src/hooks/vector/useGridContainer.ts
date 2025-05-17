@@ -1,124 +1,176 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import type { AspectRatioOption } from './useContainerDimensions';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { AspectRatioOption, GridSettings } from '@/components/vector/controls/grid/types';
+import { useAspectRatioCalculator } from './useAspectRatioCalculator';
 
-interface UseGridContainerReturn {
+// Interfaz para el retorno del hook
+export interface UseGridContainerReturn {
   containerRef: React.RefObject<HTMLDivElement>;
   containerSize: { width: number; height: number };
-  calculateOptimalGrid: (aspectRatio: AspectRatioOption, spacing: number, customAspectRatio?: { width: number; height: number }) => { rows: number; cols: number };
+  calculateOptimalGrid: (
+    aspectRatio: AspectRatioOption,
+    spacing: number,
+    customRatio?: number,
+    density?: number
+  ) => GridSettings;
+  isRecalculating: boolean;
 }
 
+// Constantes
+const CONTAINER_MARGIN_FACTOR = 0.9; // Usamos el 90% del contenedor para evitar que los vectores toquen los bordes
+const SIGNIFICANT_CHANGE_THRESHOLD = 2; // Consideramos significativo un cambio de más de 2 filas/columnas
+const DEFAULT_SIZE = { width: 800, height: 600 };
+
 /**
- * Hook para obtener las dimensiones reales del contenedor y calcular filas/columnas óptimas
+ * Hook personalizado que gestiona las dimensiones del contenedor y calcula
+ * los parámetros óptimos del grid según el aspect ratio.
+ * 
+ * Características:
+ * - Usa ResizeObserver para detectar cambios en las dimensiones del contenedor
+ * - Calcula rows/cols óptimos según el aspect ratio seleccionado
+ * - Permite ajustar la densidad de vectores manteniendo el aspect ratio
+ * - Evita recálculos innecesarios para cambios pequeños
+ * - Proporciona feedback visual durante recálculos
  */
 export function useGridContainer(): UseGridContainerReturn {
   // Referencia al contenedor
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Estado para almacenar las dimensiones reales del contenedor
-  const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({
-    width: 800,
-    height: 600
-  });
+  // Estados
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number }>(DEFAULT_SIZE);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   
-  // Efecto para medir el contenedor cuando cambia de tamaño
+  // Hook para cálculos de aspect ratio
+  const { calculateOptimalGrid: baseCalculateOptimal, calculateCustomGrid } = useAspectRatioCalculator();
+  
+  // Efecto para medir el contenedor con ResizeObserver
   useEffect(() => {
     if (!containerRef.current) return;
     
     const updateSize = () => {
       if (!containerRef.current) return;
       
-      const { width, height } = containerRef.current.getBoundingClientRect();
-      setContainerSize({ width, height });
+      const container = containerRef.current;
+      const rect = container.getBoundingClientRect();
+      
+      // Solo actualizamos si hay un cambio significativo para evitar renders innecesarios
+      setContainerSize(prev => {
+        const widthDiff = Math.abs(prev.width - rect.width);
+        const heightDiff = Math.abs(prev.height - rect.height);
+        
+        // Si el cambio es muy pequeño (< 5px), no actualizamos
+        if (widthDiff < 5 && heightDiff < 5) return prev;
+        
+        setIsRecalculating(true);
+        // Reseteamos la bandera después de un breve retraso (para efecto visual)
+        setTimeout(() => setIsRecalculating(false), 300);
+        
+        return {
+          width: rect.width,
+          height: rect.height
+        };
+      });
     };
     
-    // Crear un observador de redimensionamiento
-    const resizeObserver = new ResizeObserver(updateSize);
-    resizeObserver.observe(containerRef.current);
-    
-    // Medir inmediatamente
+    // Configuración inicial
     updateSize();
     
+    // Configurar ResizeObserver
+    const resizeObserver = new ResizeObserver(entries => {
+      if (entries.length > 0) {
+        updateSize();
+      }
+    });
+    
+    resizeObserver.observe(containerRef.current);
+    
+    // Limpieza
     return () => {
+      if (containerRef.current) {
+        resizeObserver.unobserve(containerRef.current);
+      }
       resizeObserver.disconnect();
     };
   }, []);
   
-  // Función para calcular dimensiones óptimas basadas en el tamaño real
-  const calculateOptimalGrid = useCallback((aspectRatio: AspectRatioOption, spacing: number, customAspectRatio?: { width: number; height: number }) => {
-    let optimalRows: number, optimalCols: number;
-    const { width, height } = containerSize;
+  /**
+   * Calcula la configuración óptima de grid basada en el aspect ratio y la densidad deseada
+   */
+  const calculateOptimalGrid = useCallback((  
+    aspectRatio: AspectRatioOption,
+    spacing: number,
+    customRatio?: number,
+    density?: number
+  ): GridSettings => {
+    const margin = Math.min(containerSize.width, containerSize.height) * 0.05; // 5% de margen
     
-    // Factor de margen para evitar que los vectores toquen los bordes
-    const marginFactor = 0.9;
-    const usableWidth = width * marginFactor;
-    const usableHeight = height * marginFactor;
+    // Calculamos el espacio efectivo aplicando el factor de margen
+    const effectiveWidth = containerSize.width * CONTAINER_MARGIN_FACTOR;
+    const effectiveHeight = containerSize.height * CONTAINER_MARGIN_FACTOR;
     
-    switch (aspectRatio) {
-      case '1:1': {
-        // Para 1:1, el lado más pequeño determina ambas dimensiones
-        const squareSide = Math.min(usableWidth, usableHeight);
-        optimalRows = optimalCols = Math.max(5, Math.floor(squareSide / spacing));
-        break;
+    let result: GridSettings;
+    
+    // Si hay un valor de densidad, lo usamos como base para el cálculo
+    if (density !== undefined && density > 0) {
+      // Usamos density como número base de filas
+      const baseRows = Math.max(3, Math.round(density));
+      
+      if (aspectRatio === 'custom' && customRatio) {
+        // Para ratio personalizado, calculamos las columnas basándonos en la densidad y el ratio
+        const baseCols = Math.max(3, Math.round(baseRows * customRatio));
+        result = { rows: baseRows, cols: baseCols, spacing, margin };
+      } else if (aspectRatio === '1:1') {
+        // Para 1:1, mantenemos el mismo número para filas y columnas
+        result = { rows: baseRows, cols: baseRows, spacing, margin };
+      } else if (aspectRatio === '2:1') {
+        // Para 2:1, el doble de columnas que filas
+        const baseCols = baseRows * 2;
+        result = { rows: baseRows, cols: baseCols, spacing, margin };
+      } else if (aspectRatio === '16:9') {
+        // Para 16:9, aplicamos la proporción
+        const baseCols = Math.round(baseRows * (16/9));
+        result = { rows: baseRows, cols: baseCols, spacing, margin };
+      } else {
+        // Para auto (o casos no contemplados), usamos el cálculo base
+        result = baseCalculateOptimal(aspectRatio, undefined, {
+          containerWidth: effectiveWidth,
+          containerHeight: effectiveHeight,
+          spacing,
+          margin
+        });
       }
-        
-      case '2:1': {
-        optimalRows = Math.max(5, Math.floor(usableHeight / spacing));
-        optimalCols = optimalRows * 2;
-        break;
-      }
-        
-      case '16:9': {
-        // Para 16:9, mantenemos esa proporción exacta
-        if (usableWidth / usableHeight > 16/9) {
-          // Contenedor más ancho, limitar por altura
-          optimalRows = Math.max(9, Math.floor(usableHeight / spacing));
-          optimalCols = Math.floor(optimalRows * (16/9));
-        } else {
-          // Contenedor más estrecho, limitar por ancho
-          optimalCols = Math.max(16, Math.floor(usableWidth / spacing));
-          optimalRows = Math.floor(optimalCols * (9/16));
-        }
-        break;
-      }
-        
-      case 'custom': {
-        if (customAspectRatio && customAspectRatio.width > 0 && customAspectRatio.height > 0) {
-          const targetRatio = customAspectRatio.width / customAspectRatio.height;
-          if (usableWidth / usableHeight > targetRatio) {
-            // Limitar por altura
-            optimalRows = Math.max(5, Math.floor(usableHeight / spacing));
-            optimalCols = Math.floor(optimalRows * targetRatio);
-          } else {
-            // Limitar por ancho
-            optimalCols = Math.max(5, Math.floor(usableWidth / spacing));
-            optimalRows = Math.floor(optimalCols / targetRatio);
-          }
-        } else {
-          // Fallback si no hay ratio personalizado válido
-          optimalRows = Math.max(9, Math.floor(usableHeight / spacing));
-          optimalCols = Math.max(16, Math.floor(usableWidth / spacing));
-        }
-        break;
-      }
-        
-      default: { // 'auto'
-        // Usar el máximo de filas/columnas que caben en el espacio disponible
-        optimalRows = Math.max(5, Math.floor(usableHeight / spacing));
-        optimalCols = Math.max(5, Math.floor(usableWidth / spacing));
-        break;
+    } else {
+      // Sin densidad especificada, usamos el cálculo estándar
+      if (aspectRatio === 'custom' && customRatio) {
+        // Calculamos usando el ratio personalizado
+        result = calculateCustomGrid(
+          effectiveWidth,
+          effectiveHeight,
+          spacing,
+          margin,
+          customRatio
+        );
+      } else {
+        // Usamos el cálculo basado en tipo de aspect ratio
+        result = baseCalculateOptimal(aspectRatio, undefined, {
+          containerWidth: effectiveWidth,
+          containerHeight: effectiveHeight,
+          spacing,
+          margin
+        });
       }
     }
     
-    // Asegurar mínimos razonables
-    return {
-      rows: Math.max(3, Math.floor(optimalRows)),
-      cols: Math.max(3, Math.floor(optimalCols))
-    };
-  }, [containerSize]);
+    // Aseguramos valores mínimos
+    result.rows = Math.max(3, result.rows);
+    result.cols = Math.max(3, result.cols);
+    
+    return result;
+  }, [containerSize, baseCalculateOptimal, calculateCustomGrid]);
   
   return {
     containerRef,
     containerSize,
-    calculateOptimalGrid
+    calculateOptimalGrid,
+    isRecalculating
   };
 }

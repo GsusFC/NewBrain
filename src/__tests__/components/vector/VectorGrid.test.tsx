@@ -141,10 +141,10 @@ describe('VectorGrid', () => {
 
   // Probar la prop de backgroundColorr
   it('aplica el color de fondo especificado', () => {
-    const backgroundColor = '#ff0000';
+    const backgroundColor = 'var(--background)';
     const { container } = render(<VectorGrid backgroundColor={backgroundColor} />);
     
     const gridContainer = container.querySelector('.vector-grid-container');
-    expect(gridContainer).toHaveStyle({backgroundColor});
+    expect(gridContainer).toHaveStyle({ backgroundColor });
   });
 });

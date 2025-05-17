@@ -6,19 +6,17 @@ import { GridSettings } from './types';
 
 interface AspectRatioControlProps {
   initialSettings: GridSettings;
-  backgroundColor?: string;
   onChange: (settings: GridSettings) => void;
 }
 
 export function AspectRatioControl({
   initialSettings,
-  backgroundColor,
   onChange,
 }: AspectRatioControlProps) {
-  // Estados locales
+  // Local state
   const [settings, setSettings] = useState<GridSettings>(initialSettings);
 
-  // Actualizar estados cuando cambian las props
+  // Update state when props change
   useEffect(() => {
     setSettings(initialSettings);
   }, [initialSettings]);
@@ -31,8 +29,8 @@ export function AspectRatioControl({
 
   return (
     <SliderWithLabel
-      label="Espaciado"
-      value={[settings.spacing || 0]}
+      label="Spacing"
+      value={[settings.spacing ?? 0]}
       onValueChange={handleSpacingChange}
       min={0}
       max={50}

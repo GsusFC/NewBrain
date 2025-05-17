@@ -1,17 +1,12 @@
 import { useMemo } from 'react';
-import type { 
-  AnimatedVectorItem,
-  GridSettings,       
-  UseVectorGridProps, 
-  UseVectorGridReturn,
-  VectorSettings, 
-  VectorShape,
-} from './types'; 
+import { AnimatedVectorItem, GridSettings, VectorSettings, VectorShape } from './types';
 
-const DEFAULT_SPACING = 30; 
+const DEFAULT_SPACING = 50;
 const DEFAULT_MARGIN = 0;   
 const DEFAULT_VECTORS_PER_FLOCK = 10; 
 const DEFAULT_VECTOR_LENGTH = 20; // Añadir una longitud de vector por defecto
+const MIN_GRID_SIZE = 1; // Mínimo de filas/columnas a renderizar
+const WARN_SPACING_RATIO = 0.8; // Porcentaje del espacio que debe ocupar el espaciado máximo
 
 /**
  * @hook useVectorGrid
@@ -38,18 +33,37 @@ export const useVectorGrid = ({
   const result = useMemo(() => {
     const { width, height } = dimensions;
 
+    // Validación temprana de dimensiones
+    if (width <= 0 || height <= 0) {
+      if (debugMode) {
+        console.warn('[useVectorGrid] Dimensiones inválidas:', { width, height });
+      }
+      return { 
+        initialVectors: [], 
+        calculatedCols: 0, 
+        calculatedRows: 0, 
+        calculatedGridWidth: 0, 
+        calculatedGridHeight: 0 
+      };
+    }
+
+    // Configuración con valores por defecto
     const {
-      rows: desiredRows,
-      cols: desiredCols,
-      spacing,
+      rows: desiredRows = 0,
+      cols: desiredCols = 0,
+      spacing = DEFAULT_SPACING,
       margin = DEFAULT_MARGIN,
       aspectRatio = 'auto',
       vectorsPerFlock = DEFAULT_VECTORS_PER_FLOCK,
     } = gridSettings;
 
+    // Debug: Mostrar configuración recibida
     if (debugMode) {
-      console.log('[useVectorGrid] Received dimensions:', dimensions);
-      console.log('[useVectorGrid] Received gridSettings:', { desiredRows, desiredCols, spacing, margin, aspectRatio, vectorsPerFlock });
+      console.groupCollapsed('[useVectorGrid] Configuración inicial');
+      console.log('Dimensiones:', { width, height });
+      console.log('Grid Settings:', { desiredRows, desiredCols, spacing, margin, aspectRatio });
+      console.log('Vector Settings:', vectorSettings);
+      console.groupEnd();
     }
 
     const {
@@ -58,97 +72,152 @@ export const useVectorGrid = ({
     } = vectorSettings;
 
     if (width === 0 || height === 0) {
+      if (debugMode) {
+        console.warn('[useVectorGrid] Dimensiones inválidas:', { width, height });
+      }
       return { initialVectors: [], calculatedCols: 0, calculatedRows: 0, calculatedGridWidth: 0, calculatedGridHeight: 0 };
     }
 
-    const finalMargin = typeof margin === 'number' ? margin : DEFAULT_MARGIN;
+    // Validar márgenes y espaciado
+    const safeMargin = Math.max(0, margin);
+    const safeSpacing = Math.max(1, spacing);
   
-    // El área disponible es dentro de los márgenes del contenedor
-    let availableWidth = dimensions.width - 2 * finalMargin;
-    let availableHeight = dimensions.height - 2 * finalMargin;
+    // Calcular espacio disponible después de márgenes
+    const availableWidth = Math.max(1, width - 2 * safeMargin);
+    const availableHeight = Math.max(1, height - 2 * safeMargin);
 
-    if (availableWidth <= 0) {
-      if (debugMode) console.warn('[useVectorGrid] availableWidth is zero or negative after applying margins. Using dimensions.width.');
-      availableWidth = dimensions.width; // Fallback a las dimensiones completas si el margen es demasiado grande
-    }
-    if (availableHeight <= 0) {
-      if (debugMode) console.warn('[useVectorGrid] availableHeight is zero or negative after applying margins. Using dimensions.height.');
-      availableHeight = dimensions.height; // Fallback
-    }
+    // Inicializar variables para filas, columnas, espaciado y dimensiones
+    let actualRows = 1;
+    let actualCols = 1;
+    let calculatedGridWidth = 0;
+    let calculatedGridHeight = 0;
+    let adjustedSpacing = spacing ?? DEFAULT_SPACING;
 
-    let actualRows: number;
-    let actualCols: number;
-    let adjustedSpacing: number = spacing ?? DEFAULT_SPACING; // Usar el spacing provisto o el default
+    // Calcular el aspect ratio basado en la configuración
+    const getAspectRatio = (): number => {
+      if (aspectRatio === 'auto') return availableWidth / availableHeight;
+      if (aspectRatio === '16:9') return 16 / 9;
+      if (aspectRatio === '2:1') return 2;
+      if (aspectRatio === '1:1') return 1;
+      if (aspectRatio === 'custom' && gridSettings.customAspectRatio) {
+        return gridSettings.customAspectRatio.width / gridSettings.customAspectRatio.height;
+      }
+      return availableWidth / availableHeight; // Valor por defecto basado en el contenedor
+    };
 
-    // Manejo mejorado del aspectRatio
-    // Aseguramos que gridAspectRatio sea siempre un número
-    const gridAspectRatio = aspectRatio === 'auto' 
-      ? (availableWidth / availableHeight) 
-      : (typeof aspectRatio === 'number' ? aspectRatio : 1.5); // Valor por defecto si no es válido
-
-    if (desiredRows && desiredRows > 0) {
-        actualRows = desiredRows;
-        if (desiredCols && desiredCols > 0) {
-            actualCols = desiredCols;
-            if (debugMode) {
-              console.log('[useVectorGrid] Case 1: desiredRows y desiredCols definidos. actualRows:', actualRows, 'actualCols:', actualCols);
-            }
-            
-            // Aseguramos que respetamos proporciones y aprovechamos el espacio disponible
-            const idealAspectRatio = actualCols / actualRows;
-            const containerAspectRatio = availableWidth / availableHeight;
-            
-            // Ajustamos spacing para optimizar el uso del contenedor manteniendo proporción
-            if (containerAspectRatio > idealAspectRatio) {
-                // El contenedor es más ancho que la proporción ideal -> ajustar por altura
-                adjustedSpacing = availableHeight / actualRows;
-            } else {
-                // El contenedor es más alto o igual a la proporción ideal -> ajustar por ancho
-                adjustedSpacing = availableWidth / actualCols;
-            }
-            
-            if (debugMode) {
-                console.log('[useVectorGrid] Proporciones - ideal:', idealAspectRatio, 'contenedor:', containerAspectRatio);
-            }
-        } else {
-            // Solo se definió número de filas, calculamos columnas basado en el aspectRatio
-            actualCols = Math.max(1, Math.round(actualRows * gridAspectRatio));
-            adjustedSpacing = Math.min(availableWidth / actualCols, availableHeight / actualRows);
-            
-            if (debugMode) {
-              console.log('[useVectorGrid] Case 2: Solo desiredRows definido. actualRows:', actualRows, 'Calculado actualCols:', actualCols, 'usando gridAspectRatio:', gridAspectRatio);
-            }
-        }
-    } else if (desiredCols && desiredCols > 0) {
-        actualCols = desiredCols;
-        // Calculamos filas basado en el aspectRatio
-        actualRows = Math.max(1, Math.round(actualCols / gridAspectRatio));
-        adjustedSpacing = Math.min(availableWidth / actualCols, availableHeight / actualRows);
+    const gridAspectRatio = getAspectRatio();
+    
+    // Variables para almacenar las dimensiones finales de la cuadrícula
+    // calculatedGridWidth se declarará más adelante
+    // actualCols y actualRows ya están declarados al inicio de la función
+    
+    // Calcular el espaciado basado en la configuración
+    if (desiredRows > 0 && desiredCols > 0) {
+        // Caso 1: Se especifican tanto filas como columnas
+        actualRows = Math.max(1, desiredRows);
+        actualCols = Math.max(1, desiredCols);
+        
+        // Ajustar el espaciado para llenar el espacio disponible
+        const spacingByWidth = availableWidth / actualCols;
+        const spacingByHeight = availableHeight / actualRows;
+        adjustedSpacing = Math.min(spacingByWidth, spacingByHeight) * WARN_SPACING_RATIO;
+        
         if (debugMode) {
-          console.log('[useVectorGrid] Case 3: Only desiredCols provided. actualCols:', actualCols, 'Calculated actualRows:', actualRows, 'using adjustedSpacing:', adjustedSpacing);
+            console.log('[useVectorGrid] Caso 1: Filas y columnas definidas:', 
+                { actualRows, actualCols, adjustedSpacing });
+        }
+    } else if (desiredRows > 0) {
+        // Caso 2: Solo se especifica el número de filas
+        actualRows = Math.max(1, desiredRows);
+        actualCols = Math.max(1, Math.round(actualRows * gridAspectRatio));
+        
+        // Ajustar el espaciado
+        adjustedSpacing = Math.min(
+            availableWidth / actualCols,
+            availableHeight / actualRows
+        ) * WARN_SPACING_RATIO;
+        
+        if (debugMode) {
+            console.log('[useVectorGrid] Caso 2: Solo filas definidas:', 
+                { actualRows, actualCols, adjustedSpacing, gridAspectRatio });
+        }
+    } else if (desiredCols > 0) {
+        // Caso 3: Solo se especifica el número de columnas
+        actualCols = Math.max(1, desiredCols);
+        actualRows = Math.max(1, Math.round(actualCols / gridAspectRatio));
+        
+        // Ajustar el espaciado
+        adjustedSpacing = Math.min(
+            availableWidth / actualCols,
+            availableHeight / actualRows
+        ) * WARN_SPACING_RATIO;
+        
+        if (debugMode) {
+            console.log('[useVectorGrid] Caso 3: Solo columnas definidas:', 
+                { actualRows, actualCols, adjustedSpacing, gridAspectRatio });
         }
     } else {
-        actualCols = Math.max(1, Math.floor(availableWidth / adjustedSpacing));
-        actualRows = Math.max(1, Math.floor(availableHeight / adjustedSpacing));
+        // Caso 4: No se especifican filas ni columnas
+        // Calcular basado en el espaciado y el aspect ratio
+        const baseSpacing = adjustedSpacing;
+        actualCols = Math.max(1, Math.floor(availableWidth / baseSpacing));
+        actualRows = Math.max(1, Math.floor(availableHeight / (baseSpacing / gridAspectRatio)));
+        
+        // Ajustar para mantener el aspect ratio
+        if (aspectRatio !== 'auto') {
+            const targetCols = Math.round(actualRows * gridAspectRatio);
+            if (targetCols < actualCols) {
+                actualCols = targetCols;
+            } else {
+                actualRows = Math.round(actualCols / gridAspectRatio);
+            }
+        }
+        
+        // Recalcular el espaciado real
+        adjustedSpacing = Math.min(
+            availableWidth / actualCols,
+            availableHeight / actualRows
+        ) * WARN_SPACING_RATIO;
+        
         if (debugMode) {
-          console.log('[useVectorGrid] Case 4: Neither rows/cols provided. Calculated actualCols:', actualCols, 'Calculated actualRows:', actualRows, 'using adjustedSpacing:', adjustedSpacing);
+            console.log('[useVectorGrid] Caso 4: Sin filas/columnas definidas:', 
+                { actualRows, actualCols, adjustedSpacing, gridAspectRatio });
         }
     }
-
-    actualCols = Math.max(1, Math.floor(actualCols));
-    actualRows = Math.max(1, Math.floor(actualRows));
     
-    // Redondear el spacing a 2 decimales para tener valores más limpios
-    adjustedSpacing = Math.round(adjustedSpacing * 100) / 100;
+    // Asegurar valores mínimos y máximos
+    actualCols = Math.max(1, Math.min(actualCols, Math.floor(availableWidth / 5)));
+    actualRows = Math.max(1, Math.min(actualRows, Math.floor(availableHeight / 5)));
+    
+    // Asegurar que el espaciado no sea demasiado pequeño
+    const minSpacing = 5; // Mínimo espaciado en píxeles
+    adjustedSpacing = Math.max(minSpacing, adjustedSpacing);
+    
+    // Calcular dimensiones finales de la cuadrícula
+    calculatedGridWidth = actualCols * adjustedSpacing;
+    calculatedGridHeight = actualRows * adjustedSpacing;
+    
+    // Calcular márgenes para centrar la cuadrícula
+    const finalMarginX = (availableWidth - calculatedGridWidth) / 2 + safeMargin;
+    const finalMarginY = (availableHeight - calculatedGridHeight) / 2 + safeMargin;
     
     if (debugMode) {
-      console.log('[useVectorGrid] Before rounding - actualCols:', actualCols, 'actualRows:', actualRows);
-      console.log('[useVectorGrid] After rounding - actualCols:', actualCols, 'actualRows:', actualRows, 'final adjustedSpacing:', adjustedSpacing);
+        console.log('[useVectorGrid] Valores finales:', {
+            actualRows,
+            actualCols,
+            adjustedSpacing,
+            calculatedGridWidth,
+            calculatedGridHeight,
+            finalMarginX,
+            finalMarginY,
+            availableWidth,
+            availableHeight,
+            width: dimensions.width,
+            height: dimensions.height,
+            safeMargin,
+            vectorsPerFlock: gridSettings.vectorsPerFlock
+        });
     }
-
-    const calculatedGridWidth = actualCols * adjustedSpacing;
-    const calculatedGridHeight = actualRows * adjustedSpacing;
-
     // Cálculo mejorado para centrado perfecto
     // Calculamos el espacio sobrante después de considerar el grid completo
     const extraWidthSpace = width - calculatedGridWidth;
@@ -156,8 +225,8 @@ export const useVectorGrid = ({
     
     // Distribuimos el espacio extra uniformemente en ambos lados
     // Y añadimos la mitad del espaciado para centrar el primer vector
-    const finalOffsetX = Math.max(finalMargin, extraWidthSpace / 2) + (adjustedSpacing / 2);
-    const finalOffsetY = Math.max(finalMargin, extraHeightSpace / 2) + (adjustedSpacing / 2);
+    const finalOffsetX = Math.max(safeMargin, extraWidthSpace / 2) + (adjustedSpacing / 2);
+    const finalOffsetY = Math.max(safeMargin, extraHeightSpace / 2) + (adjustedSpacing / 2);
 
     if (debugMode) {
       console.log('[useVectorGrid] SVG dimensions:', { width, height });
@@ -180,8 +249,65 @@ export const useVectorGrid = ({
       console.warn(`[useVectorGrid] Limitando grid de ${actualRows}x${actualCols} a ${safeRows}x${safeCols} para prevenir problemas de rendimiento`);
     }
 
-    // Generamos los vectores con distribución optimizada usando memoización
-    const initialVectors: AnimatedVectorItem[] = [];
+    // Generar vectores
+    const vectors: AnimatedVectorItem[] = [];
+    const cellSize = adjustedSpacing; // Tamaño de celda basado en el espaciado ajustado
+    
+    // Solo un bucle para generar los vectores
+    for (let row = 0; row < actualRows; row++) {
+      for (let col = 0; col < actualCols; col++) {
+        const id = `vector-${row}-${col}`;
+        // Calcular posición centrada en la celda
+        const x = finalOffsetX + col * cellSize;
+        const y = finalOffsetY + row * cellSize;
+        
+        const {
+          vectorShape = 'line' as VectorShape, 
+          initialRotation = 0,
+        } = vectorSettings;
+
+        const vector: AnimatedVectorItem = {
+          id,
+          r: row,
+          c: col,
+          baseX: x,
+          baseY: y,
+          originalX: x,
+          originalY: y,
+          x: x,
+          y: y,
+          initialAngle: 0, // Temporal, se actualizará
+          currentAngle: 0, // Temporal, se actualizará
+          angle: 0, // Temporal, se actualizará
+          previousAngle: 0, // Temporal, se actualizará
+          targetAngle: 0, // Temporal, se actualizará
+          lengthFactor: 1,
+          widthFactor: 1,
+          intensityFactor: 1,
+          length: 20,
+          originalLength: 20,
+          color: '#000000',
+          originalColor: '#000000',
+          animationState: {},
+          flockId: Math.floor(Math.random() * (vectorsPerFlock || 1)),
+          customData: null
+        };
+
+        const calculatedRotation = typeof initialRotation === 'function' 
+          ? initialRotation(vector) 
+          : initialRotation;
+
+        Object.assign(vector, {
+          initialAngle: calculatedRotation,
+          currentAngle: calculatedRotation,
+          angle: calculatedRotation,
+          previousAngle: calculatedRotation,
+          targetAngle: calculatedRotation,
+        });
+
+        vectors.push(vector);
+      }
+    }
 
     for (let row = 0; row < safeRows; row++) {
       for (let col = 0; col < safeCols; col++) {
@@ -201,36 +327,120 @@ export const useVectorGrid = ({
             ? initialRotation({ r: row, c: col } as AnimatedVectorItem)
             : initialRotation;
 
-          initialVectors.push({
+          // Calcular el ángulo inicial, manejando tanto números como funciones
+          const currentVector = {
             id: `vector-${row}-${col}`,
-            r: row, 
-            c: col, 
-            baseX: x, 
+            r: row,
+            c: col,
+            baseX: x,
             baseY: y,
-            initialAngle, 
-            currentAngle: initialAngle,
-            lengthFactor: 1.0, 
-            widthFactor: 1.0,
-            previousAngle: initialAngle, 
-            targetAngle: initialAngle,
+            originalX: x,
+            originalY: y,
+            x: x,
+            y: y,
+            initialAngle: 0, // Temporal, se actualizará
+            currentAngle: 0, // Temporal, se actualizará
+            angle: 0, // Temporal, se actualizará
+            previousAngle: 0, // Temporal, se actualizará
+            targetAngle: 0, // Temporal, se actualizará
+            lengthFactor: 1,
+            widthFactor: 1,
+            intensityFactor: 1,
+            length: 20,
+            originalLength: 20,
+            color: '#000000',
+            originalColor: '#000000',
             animationState: {},
-            flockId: Math.floor(row * safeCols + col / (vectorsPerFlock > 0 ? vectorsPerFlock : 1)),
-            customData: null,
-          });
+            flockId: 0,
+            customData: null
+          };
+
+          const calculatedRotation = typeof initialRotation === 'function' 
+            ? initialRotation(currentVector) 
+            : initialRotation;
+
+          const vector: AnimatedVectorItem = {
+            ...currentVector,
+            initialAngle: calculatedRotation,
+            currentAngle: calculatedRotation,
+            angle: calculatedRotation,
+            previousAngle: calculatedRotation,
+            targetAngle: calculatedRotation,
+            
+            // Factores de transformación
+            lengthFactor: 1,
+            widthFactor: 1,
+            intensityFactor: 1,
+            
+            // Longitudes
+            length: 20, // Valor por defecto
+            originalLength: 20, // Valor por defecto
+            
+            // Colores
+            color: '#000000', // Color por defecto
+            originalColor: '#000000', // Color por defecto
+            
+            // Estado y metadatos
+            animationState: {},
+            flockId: Math.floor(Math.random() * (vectorsPerFlock || 1)),
+            customData: null
+          };
+
+          vectors.push(vector);
         }
       }
     }
     
+    // Debug: Mostrar información de los vectores generados
     if (debugMode) {
-      console.log(`[useVectorGrid] Generados ${initialVectors.length} vectores de ${safeRows * safeCols} posibles`);
+      console.groupCollapsed(`[useVectorGrid] Vectores generados: ${vectors.length}`);
+      if (vectors.length > 0) {
+        console.log('Primer vector:', {
+          id: vectors[0].id,
+          x: vectors[0].baseX,
+          y: vectors[0].baseY,
+          angle: vectors[0].initialAngle
+        });
+      } else {
+        console.warn('No se generaron vectores');
+        // Forzar al menos un vector en modo debug
+        console.warn('[DEBUG] Generando vector de ejemplo en el centro');
+        vectors.push({
+          id: 'debug-vector',
+          r: 0,
+          c: 0,
+          baseX: width / 2,
+          baseY: height / 2,
+          originalX: width / 2,
+          originalY: height / 2,
+          x: width / 2,
+          y: height / 2,
+          initialAngle: 0,
+          currentAngle: 0,
+          angle: 0,
+          previousAngle: 0,
+          targetAngle: 0,
+          lengthFactor: 1,
+          widthFactor: 1,
+          intensityFactor: 1,
+          length: 20,
+          originalLength: 20,
+          color: '#000000',
+          originalColor: '#000000',
+          animationState: {},
+          flockId: 0,
+          customData: null
+        });
+      }
+      console.groupEnd();
     }
 
     return {
-      initialVectors,
+      initialVectors: vectors,
       calculatedCols: actualCols,
       calculatedRows: actualRows,
-      calculatedGridWidth, 
-      calculatedGridHeight, 
+      calculatedGridWidth: calculatedGridWidth,
+      calculatedGridHeight: calculatedGridHeight
     };
   }, [dimensions, gridSettings, vectorSettings, debugMode]);
 

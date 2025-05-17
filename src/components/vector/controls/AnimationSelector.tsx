@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { SliderField } from '@/components/ui/slider-field';
 import { 
   AnimationType,
   DirectionalFlowProps,
@@ -12,14 +13,43 @@ import {
   MouseInteractionProps
 } from '../core/animations';
 
+// Tipo base con propiedades comunes a todas las animaciones
+interface BaseAnimationProps extends Record<string, unknown> {
+  intervalMs?: number;
+  transitionDurationFactor?: number;
+}
+
+// Mapa de tipos específicos para cada animación
+interface AnimationSpecificPropsMap {
+  directionalFlow: DirectionalFlowProps;
+  vortex: VortexProps;
+  flocking: FlockingProps;
+  mouseInteraction: MouseInteractionProps;
+  randomLoop: { intervalMs: number; transitionDurationFactor: number };
+  none: {};
+  smoothWaves: {};
+  seaWaves: {};
+  perlinFlow: {};
+  lissajous: {};
+  centerPulse: {};
+}
+
+// Tipo que combina las propiedades específicas con las comunes
+type AnimationProps<T extends AnimationType = AnimationType> = AnimationSpecificPropsMap[T] & BaseAnimationProps;
+
+// Tipo unión que incluye todas las animaciones
+type AnimationPropsUnion = {
+  [K in AnimationType]: AnimationProps<K>;
+}[AnimationType];
+
 interface AnimationSelectorProps {
   value: {
     animationType: AnimationType;
-    animationProps: Record<string, unknown>;
+    animationProps: AnimationPropsUnion;
   };
   onChange: (value: {
     animationType: AnimationType;
-    animationProps: Record<string, unknown>;
+    animationProps: AnimationPropsUnion;
   }) => void;
 }
 
@@ -28,15 +58,15 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
   const [directionalProps, setDirectionalProps] = useState<DirectionalFlowProps>({
     flowAngle: 45,
     turbulence: 0.3,
-    flowSpeed: 1.0,
+    flowSpeed: 1.0
   });
   
   const [vortexProps, setVortexProps] = useState<VortexProps>({
     strength: 0.05,
     radiusFalloff: 2,
     swirlDirection: 'clockwise',
-    vortexCenterX: 0.5, // Centro horizontal (proporción del ancho del canvas)
-    vortexCenterY: 0.5  // Centro vertical (proporción del alto del canvas)
+    vortexCenterX: 0.5,
+    vortexCenterY: 0.5
   });
   
   const [flockingProps, setFlockingProps] = useState<FlockingProps>({
@@ -46,11 +76,10 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
     cohesionForce: 0.8,
     maxSpeed: 2.0,
     targetSeekingForce: 0.5,
-    targetX: 0.5, // Posición objetivo X (proporción del ancho del canvas)
-    targetY: 0.5  // Posición objetivo Y (proporción del alto del canvas)
+    targetX: 0.5,
+    targetY: 0.5
   });
   
-  // Añadir estado para propiedades de interacción con el ratón
   const [mouseInteractionProps, setMouseInteractionProps] = useState<MouseInteractionProps>({
     interactionRadius: 150,
     effectType: 'attract',
@@ -58,54 +87,146 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
     falloffFactor: 1.0
   });
 
+  // Sincronizar estado local cuando cambian las props del padre
+  useEffect(() => {
+    if (value.animationType === 'directionalFlow') {
+      setDirectionalProps(prev => ({
+        ...prev,
+        ...(value.animationProps as DirectionalFlowProps)
+      }));
+    } else if (value.animationType === 'vortex') {
+      setVortexProps(prev => ({
+        ...prev,
+        ...(value.animationProps as VortexProps)
+      }));
+    } else if (value.animationType === 'flocking') {
+      setFlockingProps(prev => ({
+        ...prev,
+        ...(value.animationProps as FlockingProps)
+      }));
+    } else if (value.animationType === 'mouseInteraction') {
+      setMouseInteractionProps(prev => ({
+        ...prev,
+        ...(value.animationProps as MouseInteractionProps)
+      }));
+    }
+  }, [value.animationType, value.animationProps]);
+
+  // Valores por defecto para cada tipo de animación
+  const DEFAULT_PROPS: Record<string, AnimationProps> = {
+    directionalFlow: {
+      flowAngle: 45,
+      turbulence: 0.3,
+      flowSpeed: 1.0
+    },
+    vortex: {
+      strength: 0.05,
+      radiusFalloff: 2,
+      swirlDirection: 'clockwise',
+      vortexCenterX: 0.5,
+      vortexCenterY: 0.5
+    },
+    flocking: {
+      perceptionRadius: 100,
+      separationForce: 1.5,
+      alignmentForce: 1.0,
+      cohesionForce: 0.8,
+      maxSpeed: 2.0,
+      targetSeekingForce: 0.5,
+      targetX: 0.5,
+      targetY: 0.5
+    },
+    mouseInteraction: {
+      interactionRadius: 150,
+      effectType: 'attract',
+      effectStrength: 1.0,
+      falloffFactor: 1.0
+    },
+    randomLoop: {
+      intervalMs: 2000,
+      transitionDurationFactor: 0.5
+    },
+    // Tipos sin propiedades adicionales
+    none: {},
+    smoothWaves: {},
+    seaWaves: {},
+    perlinFlow: {},
+    lissajous: {},
+    centerPulse: {}
+  };
+
   // Manejar cambio de tipo de animación
-  const handleAnimationTypeChange = (type: AnimationType) => {
-    let props = {};
+  const handleAnimationTypeChange = useCallback((type: AnimationType) => {
+    // Obtener propiedades por defecto para el tipo seleccionado
+    const defaultProps = DEFAULT_PROPS[type] ?? {};
     
-    // Cargar propiedades específicas según el tipo seleccionado
-    switch (type) {
-      case 'directionalFlow':
-        props = directionalProps;
-        break;
-      case 'vortex':
-        props = vortexProps;
-        break;
-      case 'flocking':
-        props = flockingProps;
-        break;
-      case 'mouseInteraction':
-        props = mouseInteractionProps;
-        break;
-      // Otros tipos tendrán sus propias propiedades
+    // Si el tipo no está en la lista de tipos conocidos, mostrar advertencia
+    if (!(type in DEFAULT_PROPS)) {
+      console.warn(`Tipo de animación no manejado: ${type}`);
     }
     
+    // Usar las propiedades actuales del tipo si existen, de lo contrario usar las predeterminadas
+    let props: AnimationProps;
+    switch (type) {
+      case 'directionalFlow':
+        props = { ...defaultProps, ...directionalProps };
+        break;
+      case 'vortex':
+        props = { ...defaultProps, ...vortexProps };
+        break;
+      case 'flocking':
+        props = { ...defaultProps, ...flockingProps };
+        break;
+      case 'mouseInteraction':
+        props = { ...defaultProps, ...mouseInteractionProps };
+        break;
+      case 'randomLoop':
+        // Para randomLoop, mantener las propiedades específicas si existen
+        props = { ...defaultProps, ...(value.animationType === 'randomLoop' ? value.animationProps : {}) };
+        break;
+      default:
+        // Para tipos sin estado local específico, usar solo las propiedades por defecto
+        props = { ...defaultProps };
+    }
+    
+    // Notificar el cambio con las propiedades limpias
     onChange({
       animationType: type,
       animationProps: props
     });
-  };
+  }, [directionalProps, vortexProps, flockingProps, mouseInteractionProps, value.animationType, value.animationProps, onChange]);
 
   // Actualizar propiedades según el tipo actual
-  const updateAnimationProps = (props: Record<string, unknown>) => {
+  const updateAnimationProps = useCallback((props: Record<string, unknown>) => {
+    const newProps = {
+      ...value.animationProps,
+      ...props
+    };
+
     onChange({
       animationType: value.animationType,
-      animationProps: {
-        ...value.animationProps,
-        ...props
-      }
+      animationProps: newProps
     });
 
     // Actualizar también el estado local correspondiente
-    if (value.animationType === 'directionalFlow') {
-      setDirectionalProps(prevProps => ({ ...prevProps, ...props }));
-    } else if (value.animationType === 'vortex') {
-      setVortexProps(prevProps => ({ ...prevProps, ...props }));
-    } else if (value.animationType === 'flocking') {
-      setFlockingProps(prevProps => ({ ...prevProps, ...props }));
-    } else if (value.animationType === 'mouseInteraction') {
-      setMouseInteractionProps(prevProps => ({ ...prevProps, ...props }));
+    switch (value.animationType) {
+      case 'directionalFlow':
+        setDirectionalProps(prev => ({ ...prev, ...props } as DirectionalFlowProps));
+        break;
+      case 'vortex':
+        setVortexProps(prev => ({ ...prev, ...props } as VortexProps));
+        break;
+      case 'flocking':
+        setFlockingProps(prev => ({ ...prev, ...props } as FlockingProps));
+        break;
+      case 'mouseInteraction':
+        setMouseInteractionProps(prev => ({ ...prev, ...props } as MouseInteractionProps));
+        break;
+      default:
+        // No hacer nada para otros tipos
+        break;
     }
-  };
+  }, [value.animationType, value.animationProps, onChange]);
 
   return (
     <div className="space-y-4">
@@ -137,52 +258,44 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
       {/* Controles específicos según el tipo de animación */}
       {value.animationType === 'directionalFlow' && (
         <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Ángulo de flujo</Label>
-              <span className="text-xs text-muted-foreground">{directionalProps.flowAngle}°</span>
-            </div>
-            <Slider
-              min={0}
-              max={360}
-              step={5}
-              value={[directionalProps.flowAngle as number || 0]}
-              onValueChange={(values) => updateAnimationProps({ flowAngle: values[0] })}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Turbulencia</Label>
-              <span className="text-xs text-muted-foreground">{directionalProps.turbulence}</span>
-            </div>
-            <Slider
-              min={0}
-              max={1}
-              step={0.05}
-              value={[directionalProps.turbulence as number || 0]}
-              onValueChange={(values) => updateAnimationProps({ turbulence: values[0] })}
-            />
-          </div>
+          <SliderField
+            label="Ángulo de flujo"
+            value={(directionalProps.flowAngle as number) ?? 45}
+            min={0}
+            max={360}
+            step={5}
+            unit="°"
+            onChange={(value) => updateAnimationProps({ flowAngle: value })}
+          />
+          <SliderField
+            label="Turbulencia"
+            value={(directionalProps.turbulence as number) ?? 0.3}
+            min={0}
+            max={1}
+            step={0.05}
+            onChange={(value) => updateAnimationProps({ turbulence: value })}
+          />
+          <SliderField
+            label="Velocidad de flujo"
+            value={(directionalProps.flowSpeed as number) ?? 1.0}
+            min={0.1}
+            max={3}
+            step={0.1}
+            onChange={(value) => updateAnimationProps({ flowSpeed: value })}
+          />
         </div>
       )}
 
       {value.animationType === 'vortex' && (
         <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Intensidad</Label>
-              <span className="text-xs text-muted-foreground">{vortexProps.strength}</span>
-            </div>
-            <Slider
-              min={0.01}
-              max={0.2}
-              step={0.01}
-              value={[vortexProps.strength as number || 0.05]}
-              onValueChange={(values) => updateAnimationProps({ strength: values[0] })}
-            />
-          </div>
-          
+          <SliderField
+            label="Fuerza"
+            value={(vortexProps.strength as number) ?? 0.05}
+            min={0.01}
+            max={0.2}
+            step={0.01}
+            onChange={(value) => updateAnimationProps({ strength: value })}
+          />
           <div className="space-y-2">
             <Label>Dirección</Label>
             <Select
@@ -198,52 +311,43 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
               </SelectContent>
             </Select>
           </div>
+          <SliderField
+            label="Radio de caída"
+            value={vortexProps.radiusFalloff as number || 2}
+            min={1}
+            max={5}
+            step={0.1}
+            onChange={(value) => updateAnimationProps({ radiusFalloff: value })}
+          />
         </div>
       )}
 
       {value.animationType === 'flocking' && (
         <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Radio de percepción</Label>
-              <span className="text-xs text-muted-foreground">{flockingProps.perceptionRadius}px</span>
-            </div>
-            <Slider
-              min={20}
-              max={200}
-              step={5}
-              value={[flockingProps.perceptionRadius as number || 100]}
-              onValueChange={(values) => updateAnimationProps({ perceptionRadius: values[0] })}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Fuerza de separación</Label>
-              <span className="text-xs text-muted-foreground">{flockingProps.separationForce}</span>
-            </div>
-            <Slider
-              min={0}
-              max={3}
-              step={0.1}
-              value={[flockingProps.separationForce as number || 1.5]}
-              onValueChange={(values) => updateAnimationProps({ separationForce: values[0] })}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Fuerza de cohesión</Label>
-              <span className="text-xs text-muted-foreground">{flockingProps.cohesionForce}</span>
-            </div>
-            <Slider
-              min={0}
-              max={3}
-              step={0.1}
-              value={[flockingProps.cohesionForce as number || 0.8]}
-              onValueChange={(values) => updateAnimationProps({ cohesionForce: values[0] })}
-            />
-          </div>
+          <SliderField
+            label="Radio de percepción"
+            value={flockingProps.perceptionRadius as number || 100}
+            min={20}
+            max={200}
+            step={5}
+            onChange={(value) => updateAnimationProps({ perceptionRadius: value })}
+          />
+          <SliderField
+            label="Fuerza de separación"
+            value={flockingProps.separationForce as number || 1.5}
+            min={0}
+            max={3}
+            step={0.1}
+            onChange={(value) => updateAnimationProps({ separationForce: value })}
+          />
+          <SliderField
+            label="Fuerza de cohesión"
+            value={flockingProps.cohesionForce as number || 0.8}
+            min={0}
+            max={3}
+            step={0.1}
+            onChange={(value) => updateAnimationProps({ cohesionForce: value })}
+          />
         </div>
       )}
 
@@ -251,33 +355,22 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
 
       {value.animationType === 'randomLoop' && (
         <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Intervalo (ms)</Label>
-              <span className="text-xs text-muted-foreground">{(value.animationProps.intervalMs as number) || 2000}ms</span>
-            </div>
-            <Slider
-              min={500}
-              max={5000}
-              step={100}
-              value={[value.animationProps.intervalMs as number || 2000]}
-              onValueChange={(values) => updateAnimationProps({ intervalMs: values[0] })}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Duración de transición</Label>
-              <span className="text-xs text-muted-foreground">{(value.animationProps.transitionDurationFactor as number) || 0.5}</span>
-            </div>
-            <Slider
-              min={0.1}
-              max={0.9}
-              step={0.05}
-              value={[value.animationProps.transitionDurationFactor as number || 0.5]}
-              onValueChange={(values) => updateAnimationProps({ transitionDurationFactor: values[0] })}
-            />
-          </div>
+          <SliderField
+            label="Intervalo (ms)"
+            value={(value.animationProps.intervalMs as number) || 2000}
+            min={500}
+            max={5000}
+            step={100}
+            onChange={(value) => updateAnimationProps({ intervalMs: value })}
+          />
+          <SliderField
+            label="Duración de transición"
+            value={(value.animationProps.transitionDurationFactor as number) || 0.5}
+            min={0.1}
+            max={0.9}
+            step={0.05}
+            onChange={(value) => updateAnimationProps({ transitionDurationFactor: value })}
+          />
         </div>
       )}
 
@@ -300,48 +393,30 @@ export function AnimationSelector({ value, onChange }: AnimationSelectorProps) {
               </SelectContent>
             </Select>
           </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Radio de interacción</Label>
-              <span className="text-xs text-muted-foreground">{mouseInteractionProps.interactionRadius}px</span>
-            </div>
-            <Slider
-              min={50}
-              max={300}
-              step={10}
-              value={[mouseInteractionProps.interactionRadius as number || 150]}
-              onValueChange={(values) => updateAnimationProps({ interactionRadius: values[0] })}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Intensidad del efecto</Label>
-              <span className="text-xs text-muted-foreground">{mouseInteractionProps.effectStrength}</span>
-            </div>
-            <Slider
-              min={0.1}
-              max={3}
-              step={0.1}
-              value={[mouseInteractionProps.effectStrength as number || 1.0]}
-              onValueChange={(values) => updateAnimationProps({ effectStrength: values[0] })}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label>Factor de atenuación</Label>
-              <span className="text-xs text-muted-foreground">{mouseInteractionProps.falloffFactor}</span>
-            </div>
-            <Slider
-              min={0.1}
-              max={3}
-              step={0.1}
-              value={[mouseInteractionProps.falloffFactor as number || 1.0]}
-              onValueChange={(values) => updateAnimationProps({ falloffFactor: values[0] })}
-            />
-          </div>
+          <SliderField
+            label="Radio de interacción"
+            value={mouseInteractionProps.interactionRadius as number || 150}
+            min={50}
+            max={300}
+            step={10}
+            onChange={(value) => updateAnimationProps({ interactionRadius: value })}
+          />
+          <SliderField
+            label="Fuerza del efecto"
+            value={mouseInteractionProps.effectStrength as number || 1.0}
+            min={0.1}
+            max={3}
+            step={0.1}
+            onChange={(value) => updateAnimationProps({ effectStrength: value })}
+          />
+          <SliderField
+            label="Factor de caída"
+            value={mouseInteractionProps.falloffFactor as number || 1.0}
+            min={0.1}
+            max={3}
+            step={0.1}
+            onChange={(value) => updateAnimationProps({ falloffFactor: value })}
+          />
         </div>
       )}
     </div>

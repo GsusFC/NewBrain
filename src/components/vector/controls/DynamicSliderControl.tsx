@@ -1,17 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { SliderWithLabel } from '@/components/ui/slider-with-label';
 import { debounce } from 'lodash';
+import { cn } from '@/lib/utils';
 
 interface DynamicSliderControlProps {
   label: string;
   value: number;
   onChange: (value: number) => void;
   onChangeEnd?: () => void; 
-  min: number;
-  max: number;
-  step: number;
+  /** Valor mínimo del control deslizante. Por defecto: 0 */
+  min?: number;
+  /** Valor máximo del control deslizante. Por defecto: 100 */
+  max?: number;
+  /** Incremento entre valores. Por defecto: 1 */
+  step?: number;
   className?: string;
   minLabel?: string; 
   maxLabel?: string; 
@@ -37,36 +41,55 @@ export function DynamicSliderControl({
   const [internalValue, setInternalValue] = useState(value);
   const [isDragging, setIsDragging] = useState(false);
   
-  // Actualizar el valor interno cuando cambia el valor externamente
+  // Actualizar el valor interno cuando cambia el valor externo
   // (solo si no estamos en medio de un arrastre)
   useEffect(() => {
     if (!isDragging && internalValue !== value) {
       setInternalValue(value);
     }
-  }, [value, isDragging, internalValue]);
+    // Eliminamos internalValue de las dependencias para evitar ejecuciones redundantes
+    // La comparación con internalValue se mantiene en la lógica del efecto
+  }, [value, isDragging]);
   
   // Debounced callback para notificar cambios al padre
-  const debouncedOnChange = useCallback((newValue: number) => {
-    const debouncedFn = debounce((value: number) => {
-      onChange(value);
-    }, 50);
-    debouncedFn(newValue);
-  }, [onChange]);
+  const debouncedOnChange = useMemo(
+    () => debounce((v: number) => onChange(v), 50),
+    [onChange]
+  );
+  
+  // Cancelar el debounce al desmontar para evitar fugas de memoria
+  useEffect(() => {
+    return () => {
+      debouncedOnChange.cancel();
+    };
+  }, [debouncedOnChange]);
   
   // Manejador para cambios en el slider
   const handleSliderChange = useCallback((values: number[]) => {
     const newValue = values[0];
     setInternalValue(newValue);
-    setIsDragging(true);
-    debouncedOnChange(newValue);
-  }, [debouncedOnChange]);
+    if (isDragging) {
+      debouncedOnChange(newValue);
+    } else {
+      // Si no estamos arrastrando, actualizamos inmediatamente
+      debouncedOnChange.cancel();
+      onChange(newValue);
+    }
+  }, [debouncedOnChange, isDragging, onChange]);
   
-  // Cuando termina el arrastre, aseguramos actualización final
-  const handleSliderChangeEnd = useCallback(() => {
-    setIsDragging(false);
-    onChange(internalValue);
-    onChangeEnd?.();
-  }, [internalValue, onChange, onChangeEnd]);
+  // Manejador para cuando comienza el arrastre
+  const handlePointerDown = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+  
+  // Manejador para cuando termina el arrastre
+  const handlePointerUp = useCallback(() => {
+    if (isDragging) {
+      debouncedOnChange.flush();
+      setIsDragging(false);
+      onChangeEnd?.();
+    }
+  }, [debouncedOnChange, isDragging, onChangeEnd]);
   
   return (
     <SliderWithLabel
@@ -76,8 +99,11 @@ export function DynamicSliderControl({
       step={step}
       value={[internalValue]}
       onValueChange={handleSliderChange}
-      onValueCommit={handleSliderChangeEnd}
-      className={className}
+      onValueCommit={handlePointerUp}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      className={cn(className, 'select-none')}
       minLabel={minLabel}
       maxLabel={maxLabel}
     />

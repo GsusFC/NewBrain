@@ -6,6 +6,14 @@ import {
   RandomLoopProps,
   AnimationCalculation
 } from './animationTypes';
+import { fixPrecision } from '@/utils/precision';
+
+// Para detección temprana de problemas según TDD
+const assert = (condition: boolean, message: string): void => {
+  if (!condition && process.env.NODE_ENV !== 'production') {
+    console.error(`[Assertion Error] ${message}`);
+  }
+};
 
 /**
  * Calcula el ángulo para la animación de curvas Lissajous
@@ -25,35 +33,54 @@ export const calculateLissajous = (
     timeSpeed = 1.0
   } = props;
   
-  // Calculamos dimensiones aproximadas basadas en la posición del vector
+  // Calculamos dimensiones aproximadas basadas en la posición del vector con precisión controlada
   // Evitamos problemas si baseX o baseY son undefined
-  const baseX = item.baseX || 0;
-  const baseY = item.baseY || 0;
-  const parentWidth = baseX * 2; // Estimación aproximada de las dimensiones
-  const parentHeight = baseY * 2; // Estimación aproximada de las dimensiones
+  const baseX = fixPrecision(item.baseX || 0, 2);
+  const baseY = fixPrecision(item.baseY || 0, 2);
+  const parentWidth = fixPrecision(baseX * 2, 2); // Estimación aproximada de las dimensiones
+  const parentHeight = fixPrecision(baseY * 2, 2); // Estimación aproximada de las dimensiones
   
-  // Normaliza la posición del vector entre 0 y 1
+  // Normaliza la posición del vector entre 0 y 1 con precisión controlada
   // Evitamos divisiones por cero
-  const normalizedX = parentWidth !== 0 ? baseX / parentWidth : 0;
-  const normalizedY = parentHeight !== 0 ? baseY / parentHeight : 0;
+  const normalizedX = fixPrecision(parentWidth !== 0 ? baseX / parentWidth : 0, 4);
+  const normalizedY = fixPrecision(parentHeight !== 0 ? baseY / parentHeight : 0, 4);
   
-  // Componente temporal (avanza con el tiempo)
-  const timeComponent = timestamp * 0.001 * timeSpeed;
+  // Verificar que las posiciones normalizadas son válidas
+  assert(normalizedX >= 0 && normalizedX <= 1, `Posición X normalizada fuera de rango: ${normalizedX}`);
+  assert(normalizedY >= 0 && normalizedY <= 1, `Posición Y normalizada fuera de rango: ${normalizedY}`);
   
-  // Ecuaciones de Lissajous
-  const xComponent = Math.sin((normalizedX + timeComponent) * xFrequency * Math.PI + phaseOffset);
-  const yComponent = Math.cos((normalizedY + timeComponent) * yFrequency * Math.PI);
+  // Componente temporal con precisión controlada
+  const timeComponent = fixPrecision(timestamp * 0.001 * timeSpeed, 4);
   
-  // Calcula el ángulo basado en las componentes
-  const angle = Math.atan2(yComponent * yAmplitude, xComponent * xAmplitude) * (180 / Math.PI);
+  // Ecuaciones de Lissajous con precisión controlada
+  const xFreqPi = fixPrecision(xFrequency * Math.PI, 6);
+  const yFreqPi = fixPrecision(yFrequency * Math.PI, 6);
   
-  // El factor de longitud puede variar según la posición en la curva
-  const magnitude = Math.sqrt(
-    (xComponent * xAmplitude) ** 2 + 
-    (yComponent * yAmplitude) ** 2
-  ) / Math.sqrt(xAmplitude ** 2 + yAmplitude ** 2);
+  const xArgument = fixPrecision((normalizedX + timeComponent) * xFreqPi + phaseOffset, 6);
+  const yArgument = fixPrecision((normalizedY + timeComponent) * yFreqPi, 6);
   
-  const lengthFactor = 0.8 + magnitude * 0.4; // Entre 0.8 y 1.2
+  const xComponent = fixPrecision(Math.sin(xArgument), 6);
+  const yComponent = fixPrecision(Math.cos(yArgument), 6);
+  
+  // Calcula el ángulo basado en las componentes con precisión controlada
+  const xScaled = fixPrecision(xComponent * xAmplitude, 4);
+  const yScaled = fixPrecision(yComponent * yAmplitude, 4);
+  const angleRad = fixPrecision(Math.atan2(yScaled, xScaled), 6);
+  const angle = fixPrecision(angleRad * (180 / Math.PI), 4);
+  
+  // El factor de longitud puede variar según la posición en la curva, con precisión controlada
+  const xSquared = fixPrecision((xComponent * xAmplitude) ** 2, 4);
+  const ySquared = fixPrecision((yComponent * yAmplitude) ** 2, 4);
+  const numerator = fixPrecision(Math.sqrt(xSquared + ySquared), 4);
+  
+  const denominatorSquared = fixPrecision(xAmplitude ** 2 + yAmplitude ** 2, 4);
+  const denominator = fixPrecision(Math.sqrt(denominatorSquared), 4);
+  
+  // Evitar división por cero
+  assert(denominator > 0, `Denominador para cálculo de magnitud es cero`);
+  const magnitude = fixPrecision(numerator / denominator, 4);
+  
+  const lengthFactor = fixPrecision(0.8 + magnitude * 0.4, 4); // Entre 0.8 y 1.2
   
   return { 
     angle,
@@ -79,38 +106,57 @@ export const calculateSeaWaves = (
     spatialFactor = 0.01
   } = props;
   
-  // Posición espacial
+  // Posición espacial con precisión controlada
   // Nos aseguramos de que no sean undefined
-  const baseX = item.baseX || 0;
-  const baseY = item.baseY || 0;
-  const xFactor = baseX * spatialFactor;
-  const yFactor = baseY * spatialFactor;
+  const baseX = fixPrecision(item.baseX || 0, 2);
+  const baseY = fixPrecision(item.baseY || 0, 2);
+  const xFactor = fixPrecision(baseX * spatialFactor, 4);
+  const yFactor = fixPrecision(baseY * spatialFactor, 4);
   
-  // Componente temporal
-  const timeComponent = timestamp * baseFrequency;
+  // Componente temporal con precisión controlada
+  const timeComponent = fixPrecision(timestamp * baseFrequency, 4);
   
-  // Onda base (movimiento principal de las olas)
-  const baseWave = Math.sin(timeComponent + xFactor * 1.5 - yFactor * 0.5) * baseAmplitude;
+  // Onda base (movimiento principal de las olas) con precisión controlada
+  const baseWaveArg = fixPrecision(timeComponent + xFactor * 1.5 - yFactor * 0.5, 6);
+  const baseWaveSin = fixPrecision(Math.sin(baseWaveArg), 6);
+  const baseWave = fixPrecision(baseWaveSin * baseAmplitude, 4);
   
-  // Componente de ondulación (pequeñas olas en la superficie)
-  const rippleComponent = timestamp * rippleFrequency;
-  const rippleWave = Math.sin(rippleComponent + xFactor * 3 + yFactor) * rippleAmplitude;
+  // Componente de ondulación (pequeñas olas en la superficie) con precisión controlada
+  const rippleComponent = fixPrecision(timestamp * rippleFrequency, 4);
+  const rippleArg = fixPrecision(rippleComponent + xFactor * 3 + yFactor, 6);
+  const rippleSin = fixPrecision(Math.sin(rippleArg), 6);
+  const rippleWave = fixPrecision(rippleSin * rippleAmplitude, 4);
+  
+  // Combinar ondas con precisión controlada
+  let waveAngle = fixPrecision(baseWave + rippleWave, 4);
   
   // Choppiness (asimetría en las crestas de las olas - efecto más natural)
-  let waveAngle = baseWave + rippleWave;
   if (choppiness > 0) {
-    // Añadir asimetría basada en la posición de la ola
-    const phasePosition = (Math.sin(timeComponent + xFactor * 1.5 - yFactor * 0.5) + 1) / 2; // 0 a 1
-    waveAngle += phasePosition > 0.7 ? (phasePosition - 0.7) * 20 * choppiness : 0;
+    // Añadir asimetría basada en la posición de la ola con precisión controlada
+    const phaseArg = fixPrecision(timeComponent + xFactor * 1.5 - yFactor * 0.5, 6);
+    const phaseSin = fixPrecision(Math.sin(phaseArg), 6);
+    const phasePosition = fixPrecision((phaseSin + 1) / 2, 4); // Normalizado de 0 a 1
+    
+    // Aplicar choppiness solo en crestas de olas (cuando phasePosition > 0.7)
+    if (phasePosition > 0.7) {
+      const choppyOffset = fixPrecision((phasePosition - 0.7) * 20 * choppiness, 4);
+      waveAngle = fixPrecision(waveAngle + choppyOffset, 4);
+    }
   }
   
-  // Factor de longitud basado en la posición de la ola
+  // Factor de longitud basado en la posición de la ola con precisión controlada
   // Las olas son más largas en las crestas y más cortas en los valles
-  const wavePosition = (Math.sin(timeComponent + xFactor) + 1) / 2; // 0 a 1
-  const lengthFactor = 0.8 + wavePosition * 0.4;
+  const wavePositionArg = fixPrecision(timeComponent + xFactor, 6);
+  const wavePositionSin = fixPrecision(Math.sin(wavePositionArg), 6);
+  const wavePosition = fixPrecision((wavePositionSin + 1) / 2, 4); // Normalizado de 0 a 1
   
-  // El ancho también puede variar con la posición de la ola
-  const widthFactor = 0.9 + wavePosition * 0.2;
+  // Verificar que la posición está en el rango esperado
+  assert(wavePosition >= 0 && wavePosition <= 1, 
+         `Posición de ola fuera de rango: ${wavePosition}`);
+  
+  // Calcular factores con precisión controlada
+  const lengthFactor = fixPrecision(0.8 + wavePosition * 0.4, 4);
+  const widthFactor = fixPrecision(0.9 + wavePosition * 0.2, 4);
   
   return {
     angle: 180 + waveAngle, // Añade 180 para que apunte en la dirección contraria al origen
@@ -129,35 +175,51 @@ export const calculatePerlinFlow = (
   props: PerlinFlowProps
 ): AnimationCalculation => {
   const {
-    noiseScale = 0.005,
-    timeEvolutionSpeed = 0.0002,
-    angleMultiplier = 360
+    noiseScale = 0.01,
+    timeEvolutionSpeed = 0.0001,
+    angleMultiplier = 180
   } = props;
   
-  // Implementamos una aproximación de ruido Perlin usando múltiples funciones seno
-  // con frecuencias y fases diferentes (no es ruido Perlin puro, pero visual y
-  // computacionalmente eficiente para este caso de uso)
+  // Asegurarnos de que las coordenadas existen con precisión controlada
+  const baseX = fixPrecision(item.baseX || 0, 2);
+  const baseY = fixPrecision(item.baseY || 0, 2);
   
-  // Coordenadas en el espacio del ruido
-  const nx = item.baseX * noiseScale;
-  const ny = item.baseY * noiseScale;
-  const nt = timestamp * timeEvolutionSpeed;
+  // Componente temporal para evolución del ruido con precisión controlada
+  const timeComponent = fixPrecision(timestamp * timeEvolutionSpeed, 4);
   
-  // Combinamos varias funciones seno con diferentes frecuencias y fases
-  // para simular ruido Perlin
-  const noise = (
-    Math.sin(nx * 10 + ny * 8 + nt) * 0.5 +
-    Math.sin(nx * 21 + ny * 13.5 + nt * 1.3) * 0.25 +
-    Math.sin(nx * 43 + ny * 29 + nt * 0.7) * 0.125 +
-    Math.sin(nx * 87 - ny * 53 + nt * 1.5) * 0.0625
-  ) / 0.9375; // Normalizar a [-1, 1]
+  // Calcular argumentos para funciones trigonométricas con precisión controlada
+  const sinArgX = fixPrecision(baseX * noiseScale + timeComponent * 0.7, 6);
+  const cosArgX = fixPrecision(baseY * noiseScale + timeComponent * 1.3, 6);
+  const sinArgY = fixPrecision(baseY * noiseScale + timeComponent, 6);
+  const cosArgY = fixPrecision(baseX * noiseScale + timeComponent * 1.1, 6);
   
-  // Convertimos el ruido a un ángulo
-  const angle = noise * (angleMultiplier as number);
+  // Calcular componentes de ruido con precisión controlada
+  const sinX = fixPrecision(Math.sin(sinArgX), 6);
+  const cosX = fixPrecision(Math.cos(cosArgX), 6);
+  const sinY = fixPrecision(Math.sin(sinArgY), 6);
+  const cosY = fixPrecision(Math.cos(cosArgY), 6);
   
-  // El factor de longitud puede variar según el valor del ruido
-  // Valores más altos = vectores más largos
-  const lengthFactor = 0.8 + ((noise + 1) / 2) * 0.4; // Entre 0.8 y 1.2
+  // Simulación simple de ruido Perlin para demostración con precisión controlada
+  const noiseX = fixPrecision(sinX * cosX, 6);
+  const noiseY = fixPrecision(sinY * cosY, 6);
+  
+  // Calcular el ángulo en radianes basado en el vector de flujo con precisión controlada
+  const angleRad = fixPrecision(Math.atan2(noiseY, noiseX), 6);
+  // Convertir a grados y asegurar que esté en el rango [0, 360)
+  let angle = fixPrecision((angleRad * 180 / Math.PI) * angleMultiplier, 4);
+  // Normalizar el ángulo al rango [0, 360)
+  angle = ((angle % 360) + 360) % 360;
+  
+  // Calcular la magnitud del vector de flujo para variar el factor de longitud con precisión controlada
+  const noiseSq = fixPrecision(noiseX * noiseX + noiseY * noiseY, 6);
+  const magnitude = fixPrecision(Math.sqrt(noiseSq), 4);
+  const lengthFactor = fixPrecision(0.8 + magnitude * 0.4, 4); // Entre 0.8 y 1.2
+  
+  // Verificar que los valores calculados son válidos
+  assert(isFinite(angle), `Ángulo con valor no válido: ${angle}`);
+  assert(angle >= 0 && angle < 360, `Ángulo fuera de rango: ${angle}`);
+  assert(isFinite(lengthFactor) && lengthFactor > 0, 
+         `Factor de longitud no válido: ${lengthFactor}`);
   
   return {
     angle,
@@ -263,8 +325,8 @@ export const calculateTangenteClasica = (
   // Convertir a ángulo
   const angle = baseAngleNum + clampedTan * amplitudeNum;
   
-  // El factor de intensidad puede variar con la posición
-  const intensityFactor = 0.8 + Math.abs(Math.sin(nx + timeComponent)) * 0.4;
+  // Añadir un efecto de intensidad que varía con el ruido, con precisión controlada
+  const intensityFactor = fixPrecision(0.7 + Math.abs(Math.sin(nx + timeComponent)) * 0.5, 4);
   
   return {
     angle,

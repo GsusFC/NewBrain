@@ -1,22 +1,33 @@
 "use client"
 
 import * as React from "react"
-
+import { InputHeadless, inputVariants, type InputProps as InputHeadlessProps } from "./input-headless"
 import { cn } from "@/lib/utils"
 
-export interface InputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {}
+// Re-exportar tipos y variantes para mantener la compatibilidad
+export { inputVariants }
+export type { InputHeadlessProps as InputProps }
 
-const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, ...props }, ref) => {
+/**
+ * Input - Componente de entrada de texto con estilos predefinidos
+ * 
+ * Este componente envuelve InputHeadless añadiendo estilos específicos.
+ * Para un control total, usa directamente InputHeadless.
+ */
+const Input = React.forwardRef<HTMLInputElement, InputHeadlessProps>(
+  ({ className, variant, size, ...props }, ref) => {
     return (
-      <input
-        type={type}
+      <InputHeadless
+        ref={ref}
         className={cn(
-          "border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          "backdrop-blur-sm placeholder:text-muted-foreground/60 placeholder:font-normal",
+          "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-primary hover:file:bg-primary/5",
+          "hover:border-input/80 hover:bg-card/70",
+          "aria-invalid:border-destructive/50 aria-invalid:ring-2 aria-invalid:ring-destructive/20",
           className
         )}
-        ref={ref}
+        variant={variant}
+        size={size}
         {...props}
       />
     )
