@@ -33,11 +33,9 @@ export const useVectorGrid = ({
   const result = useMemo(() => {
     const { width, height } = dimensions;
 
-    // Validación temprana de dimensiones
+    // Validación temprana de dimensiones mejorada
     if (width <= 0 || height <= 0) {
-      if (debugMode) {
-        console.warn('[useVectorGrid] Dimensiones inválidas:', { width, height });
-      }
+      console.error('[useVectorGrid] ⚠️ Dimensiones inválidas:', { width, height });
       return { 
         initialVectors: [], 
         calculatedCols: 0, 
@@ -58,13 +56,11 @@ export const useVectorGrid = ({
     } = gridSettings;
 
     // Debug: Mostrar configuración recibida
-    if (debugMode) {
-      console.groupCollapsed('[useVectorGrid] Configuración inicial');
-      console.log('Dimensiones:', { width, height });
-      console.log('Grid Settings:', { desiredRows, desiredCols, spacing, margin, aspectRatio });
-      console.log('Vector Settings:', vectorSettings);
-      console.groupEnd();
-    }
+    console.group('[useVectorGrid] 🔍 Configuración inicial');
+    console.log('Dimensiones:', { width, height });
+    console.log('Grid Settings:', { desiredRows, desiredCols, spacing, margin, aspectRatio });
+    console.log('Vector Settings:', vectorSettings);
+    console.groupEnd();
 
     const {
         vectorShape = 'line' as VectorShape, 
@@ -72,9 +68,7 @@ export const useVectorGrid = ({
     } = vectorSettings;
 
     if (width === 0 || height === 0) {
-      if (debugMode) {
-        console.warn('[useVectorGrid] Dimensiones inválidas:', { width, height });
-      }
+      console.error('[useVectorGrid] ⚠️ Dimensiones inválidas:', { width, height });
       return { initialVectors: [], calculatedCols: 0, calculatedRows: 0, calculatedGridWidth: 0, calculatedGridHeight: 0 };
     }
 
@@ -185,6 +179,23 @@ export const useVectorGrid = ({
         }
     }
     
+    // Añadir verificación de validez de actualRows y actualCols
+    if (actualRows <= 0 || actualCols <= 0) {
+      console.error('[useVectorGrid] ⚠️ Filas o columnas inválidas:', { actualRows, actualCols });
+      // Asegurar valores mínimos
+      actualRows = Math.max(1, actualRows);
+      actualCols = Math.max(1, actualCols);
+    }
+
+    // Logger de validación de tamaño
+    console.log('[useVectorGrid] ✓ Dimensiones de grid calculadas:', {
+      actualRows,
+      actualCols,
+      calculatedGridWidth,
+      calculatedGridHeight,
+      efectiveSpacing: adjustedSpacing
+    });
+
     // Asegurar valores mínimos y máximos
     actualCols = Math.max(1, Math.min(actualCols, Math.floor(availableWidth / 5)));
     actualRows = Math.max(1, Math.min(actualRows, Math.floor(availableHeight / 5)));
@@ -391,15 +402,57 @@ export const useVectorGrid = ({
       }
     }
     
+    // Generar un vector ficticio en casos críticos donde no se generan vectores 
+    if (vectors.length === 0) {
+      console.warn('[useVectorGrid] ⚠️ No se generaron vectores con la configuración actual');
+      console.log('Generando vector de emergencia en el centro');
+      
+      // Vector de emergencia en el centro
+      vectors.push({
+        id: 'emergency-vector',
+        r: 0,
+        c: 0,
+        baseX: width / 2,
+        baseY: height / 2,
+        originalX: width / 2,
+        originalY: height / 2,
+        x: width / 2,
+        y: height / 2,
+        initialAngle: 0,
+        currentAngle: 0,
+        angle: 0,
+        previousAngle: 0,
+        targetAngle: 0,
+        lengthFactor: 1,
+        widthFactor: 1,
+        intensityFactor: 1,
+        length: vectorSettings.vectorLength || DEFAULT_VECTOR_LENGTH * 2,
+        originalLength: vectorSettings.vectorLength || DEFAULT_VECTOR_LENGTH * 2,
+        color: '#ff3333', // Rojo para visualizar fácilmente
+        originalColor: '#ff3333',
+        animationState: {},
+        flockId: 0,
+        customData: null
+      });
+    }
+
     // Debug: Mostrar información de los vectores generados
-    if (debugMode) {
+    if (debugMode || vectors.length === 0) {
       console.groupCollapsed(`[useVectorGrid] Vectores generados: ${vectors.length}`);
       if (vectors.length > 0) {
         console.log('Primer vector:', {
           id: vectors[0].id,
           x: vectors[0].baseX,
           y: vectors[0].baseY,
-          angle: vectors[0].initialAngle
+          angle: vectors[0].initialAngle,
+          color: vectors[0].color,
+          length: vectors[0].length
+        });
+        console.log('Último vector:', {
+          id: vectors[vectors.length - 1].id,
+          x: vectors[vectors.length - 1].baseX,
+          y: vectors[vectors.length - 1].baseY,
+          angle: vectors[vectors.length - 1].initialAngle
         });
       } else {
         console.warn('No se generaron vectores');

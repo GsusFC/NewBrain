@@ -124,10 +124,11 @@ export const VectorPlaygroundWithStore: React.FC = () => {
   const updateProps = useUpdateProps();
   
   // Generar vectores iniciales con useVectorGrid al nivel superior
+  // Nota: Aseguramos dimensiones válidas con los valores de containerSize mejorados
   const { initialVectors: gridInitialVectors } = useVectorGrid({
     dimensions: {
-      width: containerSize.width || 0,
-      height: containerSize.height || 0
+      width: containerSize.width,
+      height: containerSize.height
     },
     gridSettings: {
       rows: gridSettings.rows,
@@ -145,9 +146,12 @@ export const VectorPlaygroundWithStore: React.FC = () => {
 
   // Vectores iniciales memorizados
   const initialVectors = useMemo(() => {
-    if (!containerSize.width || !containerSize.height) return [];
+    console.log('📈 useVectorGrid generó vectores:', gridInitialVectors.length);
+    
+    // Ya no es necesario verificar dimensiones aquí porque useGridContainer
+    // siempre proporciona dimensiones válidas
     return gridInitialVectors;
-  }, [gridInitialVectors, containerSize.width, containerSize.height]);
+  }, [gridInitialVectors]);
   
   // Vectores animados con nuestro hook optimizado
   const { 
@@ -264,6 +268,19 @@ export const VectorPlaygroundWithStore: React.FC = () => {
   
   // Obtener todas las props necesarias para el componente VectorGrid
   const vectorGridProps = useExportableState();
+  
+  // Debug temporal para identificar el problema de vectores no visibles
+  useEffect(() => {
+    console.group('🔍 Depuración VectorGrid');
+    console.log('Dimensiones del contenedor:', containerSize);
+    console.log('Dimensiones efectivas:', { width: effectiveWidth, height: effectiveHeight });
+    console.log('Grid Settings:', gridSettings);
+    console.log('Vector Settings:', vectorSettings);
+    console.log('Vectores iniciales:', initialVectors.length);
+    console.log('Vectores animados:', animatedVectors.length);
+    console.log('Render mode:', renderAsCanvas ? 'Canvas' : 'SVG');
+    console.groupEnd();
+  }, [containerSize, effectiveWidth, effectiveHeight, gridSettings, vectorSettings, initialVectors.length, animatedVectors.length, renderAsCanvas]);
   
   return (
     <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[300px_1fr_300px] xl:grid-cols-[360px_1fr_360px] w-full h-[100dvh] overflow-hidden bg-background/30">
@@ -412,11 +429,20 @@ export const VectorPlaygroundWithStore: React.FC = () => {
               ref={vectorGridRef}
               width={effectiveWidth}
               height={effectiveHeight}
-              backgroundColor="#0a0a0a"
+              backgroundColor="#1a1a1a" // Fondo oscuro para buen contraste
               onVectorClick={handleVectorClick}
               renderAsCanvas={renderAsCanvas}
-              gridSettings={gridSettings}
-              vectorSettings={vectorSettings}
+              gridSettings={{
+                ...gridSettings,
+                // Reducir márgen para centrar mejor los vectores
+                margin: Math.min(gridSettings.margin, 30),
+                // Asegurar que el espaciado es proporcional a las dimensiones
+                spacing: Math.max(15, Math.min(gridSettings.spacing, 40))
+              }}
+              vectorSettings={{
+                ...vectorSettings,
+                vectorColor: "#a3a3a3" // Color más claro para mejor contraste
+              }}
               animationType={animationType}
               animationProps={animationProps}
               isPaused={isPaused}
@@ -425,7 +451,8 @@ export const VectorPlaygroundWithStore: React.FC = () => {
               dynamicLengthEnabled={dynamicLengthEnabled}
               dynamicWidthEnabled={dynamicWidthEnabled}
               dynamicIntensity={dynamicIntensity}
-              debugMode={isDevelopment}
+              cullingEnabled={true} // Habilitar culling para mejor rendimiento
+              debugMode={false} // DESACTIVAR DEBUG para evitar exceso de logs
             />
           </div>
         </div>

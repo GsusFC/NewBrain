@@ -1,15 +1,27 @@
 import React from 'react';
 
 interface FallbackVectorDisplayProps {
-  onRetry: () => void;
+  // Props opcionales para casos de uso flexibles
+  onRetry?: () => void;
+  width?: number;
+  height?: number;
+  message?: string;
 }
 
-export const FallbackVectorDisplay: React.FC<FallbackVectorDisplayProps> = ({ onRetry }) => {
+export const FallbackVectorDisplay: React.FC<FallbackVectorDisplayProps> = ({ 
+  onRetry, 
+  width = 400, 
+  height = 300,
+  message = "Los vectores deberían verse en esta área. Si no se ven, puede haber un problema con el renderizador."
+}) => {
   return (
-    <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50">
+    <div 
+      className="relative bg-black/80 flex flex-col items-center justify-center z-50" 
+      style={{ width: `${width}px`, height: `${height}px` }}
+    >
       <div className="bg-white p-4 rounded-lg max-w-md">
         <h2 className="text-black font-bold text-xl mb-2">Prueba Visual</h2>
-        <p className="text-black mb-4">Los vectores deberían verse en esta área. Si no se ven, puede haber un problema con el renderizador SVG o Canvas.</p>
+        <p className="text-black mb-4">{message}</p>
         
         {/* Vectores estáticos de prueba con SVG puro */}
         <div className="border border-gray-400 p-2 mb-4 bg-gray-100">
@@ -22,12 +34,14 @@ export const FallbackVectorDisplay: React.FC<FallbackVectorDisplayProps> = ({ on
           </svg>
         </div>
         
-        <button 
-          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded w-full"
-          onClick={onRetry}
-        >
-          Reintentar Renderizado
-        </button>
+        {onRetry && (
+          <button 
+            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded w-full"
+            onClick={onRetry}
+          >
+            Reintentar Renderizado
+          </button>
+        )}
       </div>
     </div>
   );

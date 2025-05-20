@@ -21,32 +21,57 @@ interface OptimalGridResult {
  */
 export const useGridContainer = (containerRef: RefObject<HTMLElement>) => {
   // Estado para almacenar las dimensiones actuales del contenedor
-  const [containerSize, setContainerSize] = useState<ContainerSize>({ width: 0, height: 0 });
+  // Usamos valores iniciales de respaldo para evitar dimensiones vacías
+  const [containerSize, setContainerSize] = useState<ContainerSize>({ width: 800, height: 600 });
+  
+  // Estado para seguimiento de inicialización
+  const [isInitialized, setIsInitialized] = useState(false);
   
   // Función para medir el contenedor actual y actualizar el estado
   const measureContainer = useCallback(() => {
     if (containerRef.current) {
       const { offsetWidth, offsetHeight } = containerRef.current;
       
-      // Solo actualizar si las dimensiones han cambiado realmente
-      setContainerSize(prev => {
-        if (prev.width !== offsetWidth || prev.height !== offsetHeight) {
-          return { width: offsetWidth, height: offsetHeight };
-        }
-        return prev;
-      });
+      // Validar que las dimensiones sean números positivos
+      const validWidth = offsetWidth > 0 ? offsetWidth : containerSize.width || 800;
+      const validHeight = offsetHeight > 0 ? offsetHeight : containerSize.height || 600;
+      
+      console.log('[useGridContainer] 📏 Midiendo contenedor:', { validWidth, validHeight });
+      
+      // Actualizar dimensiones
+      setContainerSize({ width: validWidth, height: validHeight });
+      
+      // Marcar como inicializado una vez que tengamos dimensiones válidas
+      if (!isInitialized && validWidth > 0 && validHeight > 0) {
+        setIsInitialized(true);
+      }
+    } else {
+      console.warn('[useGridContainer] ⚠️ containerRef.current es null');
     }
-  }, [containerRef]);
+  }, [containerRef, containerSize.width, containerSize.height, isInitialized]);
   
   // Efecto para medir el contenedor inicialmente y configurar el observer para cambios
   useEffect(() => {
-    // Medir inmediatamente
-    measureContainer();
+    // Función para medir con retardo para dar tiempo al DOM a renderizar
+    const delayedMeasure = () => {
+      // Medida inmediata
+      measureContainer();
+      
+      // Medida adicional después de un pequeño delay para capturar tamaños reales
+      setTimeout(measureContainer, 100);
+      
+      // Una medida final después de que todo esté renderizado
+      setTimeout(measureContainer, 500);
+    };
+    
+    // Ejecutar medida inicial
+    delayedMeasure();
     
     // Crear un ResizeObserver para detectar cambios de tamaño
     // Usar un guard para navegadores antiguos y SSR
     const resizeObserver = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(() => {
+      ? new ResizeObserver((entries) => {
+          console.log('[useGridContainer] 🔄 ResizeObserver detectó cambio');
           measureContainer();
         })
       : null;
@@ -54,6 +79,12 @@ export const useGridContainer = (containerRef: RefObject<HTMLElement>) => {
     // Observar el elemento contenedor si existe y el ResizeObserver está disponible
     if (resizeObserver && containerRef.current) {
       resizeObserver.observe(containerRef.current);
+      console.log('[useGridContainer] ✓ ResizeObserver configurado');
+    } else {
+      console.warn('[useGridContainer] ⚠️ No se pudo configurar ResizeObserver');
+      // Fallback: usar interval como respaldo
+      const intervalId = setInterval(measureContainer, 1000);
+      return () => clearInterval(intervalId);
     }
     
     // Limpiar al desmontar
@@ -168,10 +199,16 @@ export const useGridContainer = (containerRef: RefObject<HTMLElement>) => {
     };
   }, [containerSize]);
   
-  return {
-    containerSize,
+  // Asegurarnos de que nunca devolvemos dimensiones inválidas
+  const safeContainerSize = {
+    width: containerSize.width > 0 ? containerSize.width : 800,
+    height: containerSize.height > 0 ? containerSize.height : 600,
+  };
+  
+  return { 
+    containerSize: safeContainerSize, 
     calculateOptimalGrid,
-    measureContainer
+    isInitialized 
   };
 };
 

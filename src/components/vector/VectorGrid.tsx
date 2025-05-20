@@ -1,9 +1,12 @@
 'use client'; // Si usas Next.js App Router
 
-import React, { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle, useCallback } from 'react';
 
 // Importar hook de throttle para optimizar eventos
 import { useThrottledCallback } from '@/hooks/useThrottledCallback';
+
+// Importar utilidad de debounce para optimizar el ResizeObserver
+import { debounce } from 'lodash';
 
 // Importar utilidades de precisión para evitar errores de hidratación
 import { fixPrecision } from '@/utils/precision';
@@ -11,11 +14,14 @@ import { fixPrecision } from '@/utils/precision';
 // Importar hooks y tipos del núcleo del sistema de vectores
 import { useVectorGrid } from './core/useVectorGrid'; 
 import { useVectorAnimation } from './core/useVectorAnimation'; 
-import VectorSvgRenderer from './renderers/VectorSvgRenderer'; // Importar SVG Renderer
-import { VectorCanvasRenderer } from './renderers/VectorCanvasRenderer'; // Importar Canvas Renderer
+// Importar el VectorRenderer unificado
+import { VectorRenderer } from './renderers/VectorRenderer';
 
 // Importar el sistema de culling optimizado
 import { applyCulling } from './core/culling';
+
+// Importar función para obtener propiedades por defecto según tipo de animación
+import { getDefaultPropsForType } from './core/animations/defaultProps';
 
 // Importar hook de dimensiones actualizado
 // Ya no usamos useContainerDimensions directamente en este componente
@@ -83,6 +89,12 @@ interface ExtendedVectorGridProps extends VectorGridProps {
    * @default false
    */
   cullingEnabled?: boolean;
+  
+  /**
+   * Callback para notificar cambios en la cantidad de vectores renderizados
+   * Útil para debugging y métricas de rendimiento
+   */
+  onVectorCountChange?: (count: number) => void;
 }
 
 export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
@@ -92,6 +104,9 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
       gridSettings,
       vectorSettings,
       backgroundColor = 'rgb(var(--background))',
+      
+      // Callback para métricas
+      onVectorCountChange,
 
       // Propiedades de la animación
       animationType,
@@ -130,9 +145,10 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
     const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
     
     // Estados para controlar la animación
+    // Estado del disparador de pulso (number para timestamp)
     const [pulseTrigger, setPulseTrigger] = useState<number | null>(null);
     const [internalIsPaused, setInternalIsPaused] = useState<boolean>(isPaused || false);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+    const resizeObserverRef = useRef<ResizeObserver | null>(null);
     const [fade, setFade] = useState<number>(isPaused ? 0.6 : 1);
     
     // Sincronizar estado interno con prop isPaused
@@ -160,26 +176,46 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
       setMousePosition(null);
     };
 
-    // Estado para las dimensiones del contenedor
+    // Estado para las dimensiones del contenedor con valores iniciales seguros
     const [containerSize, setContainerSize] = useState({
-      width: !containerFluid && width ? width : (activeContainerRef.current?.clientWidth || 0),
-      height: !containerFluid && height ? height : (activeContainerRef.current?.clientHeight || 0)
+      width: !containerFluid && width ? width : (activeContainerRef.current?.clientWidth || DEFAULT_DIMENSIONS.width),
+      height: !containerFluid && height ? height : (activeContainerRef.current?.clientHeight || DEFAULT_DIMENSIONS.height)
     });
 
     // Efecto para manejar el redimensionamiento cuando containerFluid es true
+    // Definir updateSize con useCallback al nivel superior del componente - fuera del useEffect
+    const updateSize = useCallback(() => {
+      if (!activeContainerRef.current) return;
+      
+      const newWidth = activeContainerRef.current.clientWidth;
+      const newHeight = activeContainerRef.current.clientHeight;
+      
+      // Solo actualizar si hay cambios significativos (más de 2px)
+      if (
+        Math.abs(newWidth - containerSize.width) > 2 || 
+        Math.abs(newHeight - containerSize.height) > 2
+      ) {
+        setContainerSize({
+          width: Math.max(newWidth, 10), // Garantizar dimensiones mínimas
+          height: Math.max(newHeight, 10)
+        });
+        
+        if (debugMode) {
+          console.log('[VectorGrid] Actualización de dimensiones:', { newWidth, newHeight });
+        }
+      }
+    }, [containerSize.width, containerSize.height, debugMode, activeContainerRef]);
+
+    // Efecto para configurar el ResizeObserver
     useEffect(() => {
       if (!containerFluid || !activeContainerRef.current) return;
-
-      const updateSize = () => {
-        if (!activeContainerRef.current) return;
-        setContainerSize({
-          width: activeContainerRef.current.clientWidth,
-          height: activeContainerRef.current.clientHeight
-        });
-      };
-
-      // Configurar el ResizeObserver
-      resizeObserverRef.current = new ResizeObserver(updateSize);
+      
+      // Configurar el ResizeObserver con debounce para reducir actualizaciones excesivas
+      const debouncedUpdateSize = debounce(() => {
+        requestAnimationFrame(updateSize); // Usar rAF para sincronizar con el ciclo de renderizado
+      }, 100);
+      
+      resizeObserverRef.current = new ResizeObserver(debouncedUpdateSize);
       resizeObserverRef.current.observe(activeContainerRef.current);
 
       // Limpieza
@@ -187,6 +223,7 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
         if (resizeObserverRef.current) {
           resizeObserverRef.current.disconnect();
         }
+        debouncedUpdateSize.cancel(); // Cancelar debounce pendiente
       };
     }, [containerFluid]);
 
@@ -194,11 +231,11 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
     const actualWidth = !containerFluid && width ? width : containerSize.width;
     const actualHeight = !containerFluid && height ? height : containerSize.height;
     
-    // Dimensiones actuales del contenedor (para cálculos internos)
+    // Calcular las dimensiones finales del contenedor con validación para evitar valores inválidos
     const containerDimensions = useMemo(() => ({
-      width: actualWidth, 
-      height: actualHeight
-    }), [actualWidth, actualHeight]);
+      width: Math.max(width || containerSize.width || DEFAULT_DIMENSIONS.width, 10), // Garantizar mínimo 10px
+      height: Math.max(height || containerSize.height || DEFAULT_DIMENSIONS.height, 10)
+    }), [width, height, containerSize]);
 
     // Configuración final del grid con fallbacks para cada propiedad
     const finalGridSettings = useMemo<GridSettings>(() => ({
@@ -233,7 +270,11 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
     // Configuración final de la animación
     const finalAnimationSettings = useMemo(() => ({
       animationType: animationType ?? DEFAULT_ANIMATION_SETTINGS.animationType,
-      animationProps: animationProps ?? DEFAULT_ANIMATION_SETTINGS.animationProps,
+      animationProps: {
+        ...(DEFAULT_ANIMATION_SETTINGS.animationProps),
+        ...(animationType ? getDefaultPropsForType(animationType) : {}),
+        ...(animationProps ?? {}),
+      },
       isPaused: internalIsPaused, // Usar el estado interno que se sincroniza con las props
       easingFactor: easingFactor ?? DEFAULT_ANIMATION_SETTINGS.easingFactor,
       timeScale: timeScale ?? DEFAULT_ANIMATION_SETTINGS.timeScale,
@@ -277,45 +318,58 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
       onAllPulsesComplete: onPulseComplete 
     });
     
-    // Aplicar culling si está habilitado
+    // Aplicar culling optimizado con más padding para evitar pop-in en bordes
     const animatedVectors = useMemo(() => {
-      if (cullingEnabled && containerDimensions.width > 0 && containerDimensions.height > 0) {
-        // Aplicar el sistema de culling optimizado para filtrar vectores que no son visibles
-        const visibleVectors = applyCulling(
-          rawAnimatedVectors,
-          fixPrecision(containerDimensions.width, 2),
-          fixPrecision(containerDimensions.height, 2),
-          { enableLOD: true, padding: 50 }
-        );
-        
-        if (debugMode) {
-          // eslint-disable-next-line no-console
-          console.info(`[VectorGrid] Culling aplicado: ${visibleVectors.length} de ${rawAnimatedVectors.length} vectores visibles`);
-        }
-        
-        return visibleVectors;
+      // Verificación de seguridad para rawAnimatedVectors
+      if (!rawAnimatedVectors || rawAnimatedVectors.length === 0) {
+        return [];
       }
       
+      if (cullingEnabled && containerDimensions.width > 0 && containerDimensions.height > 0) {
+        // Aplicar el sistema de culling optimizado con padding aumentado para mejorar visibilidad
+        const culledVectors = applyCulling(
+          rawAnimatedVectors, 
+          containerDimensions.width, 
+          containerDimensions.height,
+          { enableLOD: true, padding: 150 } // Aumentado de valores típicos (50-100) para evitar pop-in
+        );
+        
+        // Log de depuración para ver el impacto del culling
+        if (debugMode) {
+          console.log('[VectorGrid] Culling aplicado:', {
+            antes: rawAnimatedVectors.length,
+            después: culledVectors.length,
+            reducción: rawAnimatedVectors.length - culledVectors.length,
+            porcentaje: ((rawAnimatedVectors.length - culledVectors.length) / rawAnimatedVectors.length * 100).toFixed(2) + '%'
+          });
+        }
+        
+        return culledVectors;
+      }
       return rawAnimatedVectors;
     }, [rawAnimatedVectors, cullingEnabled, containerDimensions, debugMode]);
-    
-    // Depuración para verificar los vectores animados
+
+    // Notificar cambios en el conteo de vectores
     useEffect(() => {
-      if (debugMode) {
-        // eslint-disable-next-line no-console
-        console.log('[VectorGrid] animatedVectors:', animatedVectors.length);
-        if (animatedVectors.length > 0) {
-          // eslint-disable-next-line no-console
-          console.log({
-            ejemplo: animatedVectors[0],
-            color: finalVectorSettings.vectorColor
-          });
-        } else {
-          // eslint-disable-next-line no-console
-          console.log('sin vectores');
-        }
+      if (onVectorCountChange && animatedVectors) {
+        onVectorCountChange(animatedVectors.length);
       }
-    }, [animatedVectors, finalVectorSettings, debugMode]);
+      
+      // Logging optimizado para debug (solo en modo de depuración)
+      if (debugMode) {
+        console.group('[VectorGrid] Debug Info');
+        console.log('Dimensiones:', containerDimensions);
+        console.log('Vectores iniciales:', initialVectors?.length || 0);
+        console.log('Vectores tras animación:', rawAnimatedVectors?.length || 0);
+        console.log('Vectores tras culling:', animatedVectors?.length || 0);
+        if (animatedVectors && animatedVectors.length > 0) {
+          console.log('Vector ejemplo:', animatedVectors[0]);
+        } else {
+          console.log('Sin vectores para renderizar');
+        }
+        console.groupEnd();
+      }
+    }, [animatedVectors, rawAnimatedVectors, initialVectors, debugMode, containerDimensions, onVectorCountChange]);
 
     useImperativeHandle(ref, () => ({
       /**
@@ -323,13 +377,11 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
        * @param vectorId - ID opcional o array de IDs de vectores específicos para animar
        */
       triggerPulse: (vectorId?: string | string[]) => {
-        if (debugMode) {
-          // eslint-disable-next-line no-console
-          console.log('[VectorGrid] triggerPulse called from ref', vectorId);
-        }
-        // Activar el pulso estableciendo un nuevo timestamp
+        if (debugMode) console.log('[VectorGrid] triggerPulse', vectorId);
+        // Usar performance.now() para mayor precisión
         setPulseTrigger(performance.now());
-      },
+        return true;
+      }, 
       
       /**
        * Alterna entre pausar y reanudar la animación de vectores.
@@ -391,7 +443,33 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
       }
     }, [containerDimensions, width, height, debugMode, cullingEnabled]);
     
-    // Renderizador simplificado con estructura DOM más limpia
+    // Componente de depuración visual
+    const DebugOverlay = () => {
+      if (!debugMode) return null;
+      return (
+        <div className="absolute inset-0 pointer-events-none">
+          <div 
+            className="border-2 border-dashed border-red-500" 
+            style={{ 
+              width: `${containerDimensions.width}px`, 
+              height: `${containerDimensions.height}px`,
+              position: 'absolute',
+              top: 0,
+              left: 0
+            }}
+          />
+          <div className="absolute top-2 left-2 bg-black/70 text-white text-xs p-2 rounded z-50">
+            <p>Dimensiones: {containerDimensions.width}×{containerDimensions.height}px</p>
+            <p>Vectores: {animatedVectors?.length || 0} / {rawAnimatedVectors?.length || 0}</p>
+            <p>Mouse: {mousePosition ? `${Math.round(mousePosition.x)},${Math.round(mousePosition.y)}` : 'fuera'}</p>
+            <p>Estado: {internalIsPaused ? 'Pausado' : 'Animando'}</p>
+            <p>Renderizador: {renderAsCanvas ? 'Canvas' : 'SVG'}</p>
+          </div>
+        </div>
+      );
+    };
+    
+    // Renderizador mejorado con estructura DOM más limpia
     return (
       <div 
         ref={gridContainerRefInternal}
@@ -406,14 +484,29 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
           boxSizing: 'border-box',
           overflow: 'hidden',
         }}
-        aria-roledescription="Grid de vectores interactivo"
-        aria-label={`Grid de vectores con ${animatedVectors.length} elementos`}
-        aria-live="polite"
-        data-vectors-count={animatedVectors.length}
-        data-render-mode={renderAsCanvas ? 'canvas' : 'svg'}
-        data-culling={cullingEnabled ? 'enabled' : 'disabled'}
         onMouseMove={throttledMouseMove}
         onMouseLeave={handleMouseLeave}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          // Verificar si ref es de tipo RefObject antes de acceder a current
+          if (!ref || typeof ref !== 'object' || !ref.current) return;
+          
+          // Permitir interacciones básicas por teclado
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            // Disparar pulso manualmente en lugar de usar ref
+            setPulseTrigger(performance.now());
+          } else if (e.key === 'p' || e.key === 'P') {
+            e.preventDefault();
+            setInternalIsPaused(prev => !prev);
+          }
+        }}
+        aria-roledescription="Grid de vectores interactivo"
+        aria-label={`Grid de vectores con ${animatedVectors?.length || 0} elementos. ${internalIsPaused ? 'Animación pausada' : 'Animación activa'}`}
+        aria-live="polite"
+        data-vectors-count={animatedVectors?.length || 0}
+        data-render-mode={renderAsCanvas ? 'canvas' : 'svg'}
+        data-culling={cullingEnabled ? 'enabled' : 'disabled'}
       >
         {/* Contenedor del renderizador con dimensiones exactas y transición */}
         <div 
@@ -428,8 +521,8 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
             border: debugMode ? '1px solid limegreen' : 'none',
           }}
         >
-          {renderAsCanvas ? (
-            <VectorCanvasRenderer 
+          {animatedVectors && animatedVectors.length > 0 ? (
+            <VectorRenderer
               vectors={animatedVectors} 
               width={containerDimensions.width} 
               height={containerDimensions.height} 
@@ -443,25 +536,18 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
               interactionEnabled={!internalIsPaused}
               cullingEnabled={cullingEnabled}
               debugMode={debugMode}
+              // Usar renderMode según la prop renderAsCanvas
+              renderMode={renderAsCanvas ? 'canvas' : 'svg'}
             />
-          ) : (
-            <VectorSvgRenderer 
-              vectors={animatedVectors} 
-              width={containerDimensions.width} 
-              height={containerDimensions.height} 
-              backgroundColor="transparent" // El fondo ya está en el div contenedor
-              baseVectorLength={finalVectorSettings.vectorLength || DEFAULT_VECTOR_SETTINGS.vectorLength}
-              baseVectorColor={finalVectorSettings.vectorColor || DEFAULT_VECTOR_SETTINGS.vectorColor}
-              baseVectorWidth={finalVectorSettings.vectorWidth || DEFAULT_VECTOR_SETTINGS.vectorWidth}
-              baseStrokeLinecap={finalVectorSettings.strokeLinecap || DEFAULT_VECTOR_SETTINGS.strokeLinecap}
-              baseVectorShape={finalVectorSettings.vectorShape || DEFAULT_VECTOR_SETTINGS.vectorShape}
-              baseRotationOrigin={finalVectorSettings.rotationOrigin || DEFAULT_VECTOR_SETTINGS.rotationOrigin}
-              interactionEnabled={!internalIsPaused}
-              cullingEnabled={cullingEnabled}
-              debugMode={debugMode}
-            />
+          ) : debugMode && (
+            <div className="flex items-center justify-center w-full h-full text-red-500 bg-black/20 text-sm">
+              No hay vectores para renderizar. Verifica la configuración de la cuadrícula o las dimensiones.
+            </div>
           )}
         </div>
+        
+        {/* Overlay de depuración */}
+        {debugMode && <DebugOverlay />}
       </div>
     );
   }

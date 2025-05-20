@@ -1,32 +1,110 @@
-// Ruta: src/components/vector/renderers/VectorCanvasRenderer.tsx
+// Vector Canvas Renderer: Implementación del renderer de Canvas para vectores
+
 'use client';
 
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo, useLayoutEffect } from 'react';
 import { cn } from '@/lib/utils';
-import type {
+import type { 
   AnimatedVectorItem,
   VectorColorValue,
   VectorShape,
-  StrokeLinecap,
-  RotationOrigin,
   GradientConfig,
-  VectorRenderProps,
 } from '../core/types';
-import { fixPrecision, formatSvgPoint } from '@/utils/precision';
-import { applyCulling } from '../core/culling';
 
-// Importar Canvg para renderizado de SVG en canvas
-// Nota: Esto requiere instalar la dependencia si no está ya instalada
-// npm install canvg o yarn add canvg
-let Canvg: typeof import('canvg').Canvg | undefined;
+// Importar módulos de utilidades
+import { ensureSafeNumber, fixPrecision, lerp } from '../utils/numericUtils';
+import { ensureContrastColor, rgbToHex } from '../utils/colorUtils';
 
-// Cargar Canvg de forma dinámica solo en el cliente
+// Fallback para parseColorWithFallback si no existe en colorUtils
+const parseColorWithFallback = (color?: string | null, fallback = '#a0a0a0'): string => {
+  if (!color || typeof color !== 'string') return fallback;
+  return color;
+};
+
+import { applyCulling, calculateAdaptivePadding, ViewportBounds } from '../utils/cullingUtils';
+import { createCanvasGradient } from '../utils/gradientUtils';
+import { createComponentLogger } from '../utils/debugUtils';
+
+// Tipos adicionales para el VectorCanvasRenderer
+type VectorLengthValue = number | ((item: AnimatedVectorItem) => number);
+type VectorWidthValue = number | ((item: AnimatedVectorItem) => number);
+type RotationOrigin = 'start' | 'center' | 'end';
+
+// Extensión de AnimatedVectorItem para permitir propiedades adicionales
+interface ExtendedVectorItem extends AnimatedVectorItem {
+  shape?: VectorShape;
+  strokeWidth?: number;
+  strokeLinecap?: StrokeLinecap;
+  // color ya está en AnimatedVectorItem como string
+}
+
+// Props del componente VectorCanvasRenderer
+interface VectorCanvasRendererProps {
+  vectors: AnimatedVectorItem[];
+  width: number;
+  height: number;
+  backgroundColor?: string;
+  baseVectorLength: VectorLengthValue;
+  baseVectorColor: VectorColorValue;
+  baseVectorWidth: VectorWidthValue;
+  baseStrokeLinecap?: StrokeLinecap;
+  baseVectorShape: VectorShape;
+  baseRotationOrigin: RotationOrigin;
+  customRenderer?: (renderProps: any) => React.ReactNode;
+  userSvgString?: string;
+  userSvgPreserveAspectRatio?: string;
+  onVectorClick?: (item: AnimatedVectorItem, event: React.MouseEvent<HTMLCanvasElement>) => void;
+  onVectorHover?: (item: AnimatedVectorItem | null, event: React.MouseEvent<HTMLCanvasElement>) => void;
+  getDynamicLength?: (item: AnimatedVectorItem) => number;
+  getDynamicWidth?: (item: AnimatedVectorItem) => number;
+  useDynamicProps?: boolean;
+  interactionEnabled?: boolean;
+  debugMode?: boolean;
+  cullingEnabled?: boolean;
+  frameInfo?: FrameInfo;
+}
+
+// Definición de FrameInfo para información del frame actual
+interface FrameInfo {
+  timestamp: number;
+  frameCount: number;
+  deltaTime: number;
+  totalFrames: number;
+}
+type StrokeLinecap = CanvasLineCap; // 'butt' | 'round' | 'square'
+type RotationOrigin = 'start' | 'center' | 'end';
+
+// Importar Canvg de forma condicional para el cache SVG
+let Canvg: any;
+// En el lado del cliente, importamos Canvg
 if (typeof window !== 'undefined') {
-  import('canvg').then((module) => {
-    Canvg = module.Canvg;
+  import('canvg').then(module => {
+    Canvg = module;
   }).catch(() => {
-    // Error al cargar Canvg
+    console.warn('Canvg no está disponible, el renderizado de SVG en Canvas será limitado');
   });
+}
+
+// Interfaz para el sistema de culling (recorte espacial)
+interface CullingBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Interfaz para los metadatos de renderizado de vectores
+interface VectorRenderMetadata {
+  isHovered: boolean;
+  isSelected: boolean;
+}
+
+// Interfaz para los parámetros de renderizado personalizado
+interface CustomRenderProps {
+  item: AnimatedVectorItem;
+  length: number;
+  width: number;
+  metadata: VectorRenderMetadata;
 }
 
 // --- Props del Componente Renderer ---
@@ -35,110 +113,182 @@ interface VectorCanvasRendererProps {
   width: number;
   height: number;
   backgroundColor?: string;
-  baseVectorLength: number | ((item: AnimatedVectorItem) => number);
+  baseVectorLength: VectorLengthValue;
   baseVectorColor: VectorColorValue;
-  baseVectorWidth: number | ((item: AnimatedVectorItem) => number);
+  baseVectorWidth: VectorWidthValue;
   baseStrokeLinecap?: StrokeLinecap;
-  baseVectorShape: VectorShape;
-  baseRotationOrigin: RotationOrigin;
-  customRenderer?: (renderProps: VectorRenderProps, ctx: CanvasRenderingContext2D) => void;
+  baseVectorShape?: VectorShape;
+  baseRotationOrigin?: RotationOrigin;
+  customRenderer?: (renderProps: CustomRenderProps, ctx: CanvasRenderingContext2D) => void;
   userSvgString?: string;
   userSvgPreserveAspectRatio?: string;
   onVectorClick?: (item: AnimatedVectorItem, event: React.MouseEvent) => void;
   onVectorHover?: (item: AnimatedVectorItem | null, event: React.MouseEvent) => void;
   interactionEnabled?: boolean;
-  /**
-   * Habilita el sistema de culling para optimizar el renderizado
-   * filtrando vectores que no son visibles en el viewport
-   */
   cullingEnabled?: boolean;
-  /**
-   * Habilita modo de depuración visual y logging
-   */
   debugMode?: boolean;
+  frameInfo?: FrameInfo;
 }
 
-// --- Helpers para cálculos y precisión ---
-/**
- * Función auxiliar para asegurar valores numéricos finitos con precisión controlada
- * @param value - Valor a verificar
- * @param defaultValue - Valor por defecto si el valor no es válido
- * @param precision - Número de decimales a redondear (opcional, por defecto 6)
- * @returns Número válido con la precisión especificada
- */
-const ensureSafeNumber = (value: unknown, defaultValue: number = 0, precision?: number): number => {
-  // Primero convertimos a número
-  let num = Number(value);
-  
-  // Verificamos si es un número finito y no es NaN
-  if (!Number.isFinite(num)) {
-    return defaultValue;
-  }
-  
-  // Aplicar precisión si se especifica
-  if (typeof precision === 'number' && precision >= 0) {
-    const factor = Math.pow(10, precision);
-    num = Math.round(num * factor) / factor;
-  }
-  
-  return num;
-};
-
-/**
- * Helper para calcular el desplazamiento de rotación
- * @param origin - Origen de la rotación ('start' | 'center' | 'end')
- * @param length - Longitud del vector
- * @returns Desplazamiento de rotación con precisión controlada
- */
+// Función auxiliar para calcular el desplazamiento de rotación
 const getRotationOffset = (origin: RotationOrigin, length: number): number => {
-  const safeLength = ensureSafeNumber(length, 0, 4);
+  const safeLength = ensureSafeNumber(length);
   
   switch (origin) {
-    case 'center': 
-      return ensureSafeNumber(safeLength / 2, 0, 4);
-    case 'end': 
-      return ensureSafeNumber(safeLength, 0, 4);
-    default: 
-      return 0; // 'start'
+    case 'start': return 0;
+    case 'center': return ensureSafeNumber(safeLength / 2);
+    case 'end': return safeLength;
+    default: return 0;
   }
 };
 
-/**
- * Componente Canvas Renderer para VectorGrid - Implementación Básica (Fase 1)
- * 
- * Esta implementación inicial soporta el renderizado de vectores en formato 'line'.
- * Maneja correctamente DPR para pantallas de alta densidad y soporta colores básicos.
- */
-// Función para comparar props y evitar re-renderizados innecesarios
-const areEqual = (prevProps: VectorCanvasRendererProps, nextProps: VectorCanvasRendererProps) => {
-  // Comparar props primitivas primero (más rápido)
-  if (
-    prevProps.width !== nextProps.width ||
-    prevProps.height !== nextProps.height ||
-    prevProps.backgroundColor !== nextProps.backgroundColor ||
-    prevProps.baseStrokeLinecap !== nextProps.baseStrokeLinecap ||
-    prevProps.baseVectorShape !== nextProps.baseVectorShape ||
-    prevProps.baseRotationOrigin !== nextProps.baseRotationOrigin ||
-    prevProps.interactionEnabled !== nextProps.interactionEnabled ||
-    prevProps.cullingEnabled !== nextProps.cullingEnabled ||
-    prevProps.debugMode !== nextProps.debugMode ||
-    prevProps.userSvgString !== nextProps.userSvgString ||
-    prevProps.userSvgPreserveAspectRatio !== nextProps.userSvgPreserveAspectRatio ||
-    prevProps.vectors.length !== nextProps.vectors.length
-  ) {
-    return false;
-  }
-  
-  // Comparar arrays de vectores (solo si las longitudes coinciden)
-  if (prevProps.vectors.some((v, i) => v.id !== nextProps.vectors[i]?.id)) {
-    return false;
-  }
-  
-  // Si llegamos aquí, los props son iguales
-  return true;
+// Función auxiliar para calcular la longitud actual de un vector
+const calculateVectorLength = (
+  item: AnimatedVectorItem, 
+  baseLength: VectorLengthValue,
+  frameInfo?: FrameInfo
+): number => {
+  // Calcular longitud base
+  const baseValue = typeof baseLength === 'function' 
+    ? baseLength(item) // Usamos solo el item ya que la función ahora solo acepta ese parámetro
+    : baseLength;
+    
+  // Aplicar el factor de longitud del vector (calculado en la animación)
+  return fixPrecision(baseValue * item.lengthFactor);
 };
 
-const VectorCanvasRendererComponent: React.FC<VectorCanvasRendererProps> = ({
+// Función auxiliar para calcular el grosor actual de un vector
+const calculateVectorWidth = (
+  item: AnimatedVectorItem, 
+  baseWidth: VectorWidthValue,
+  frameInfo?: FrameInfo
+): number => {
+  // Calcular grosor base
+  const baseValue = typeof baseWidth === 'function' 
+    ? baseWidth(item) 
+    : baseWidth;
+    
+  // Aplicar el factor de grosor del vector y asegurar un valor mínimo
+  return Math.max(0.5, fixPrecision(baseValue * item.widthFactor));
+};
+
+// Función auxiliar para calcular el color actual de un vector
+const calculateVectorColor = (
+  item: AnimatedVectorItem, 
+  baseColor: VectorColorValue,
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  frameInfo?: FrameInfo
+): string | CanvasGradient => {
+  // Si el vector tiene un color específico, usarlo
+  if (item.color) {
+    if (typeof item.color === 'string') {
+      return item.color;
+    } else if (typeof item.color === 'object' && item.color !== null) {
+      return createCanvasGradient(ctx, item.color, x, y);
+    }
+  }
+  
+  // Si color es una función dinámica, ejecutarla
+  if (typeof baseColor === 'function') {
+    const timestamp = frameInfo?.timestamp || Date.now();
+    const frameCount = frameInfo?.frameCount || 0;
+    const totalFrames = frameInfo?.totalFrames || 1000;
+    
+    const dynamicColor = baseColor(item, frameCount, totalFrames, timestamp);
+    if (typeof dynamicColor === 'string') {
+      return dynamicColor;
+    }
+  }
+
+  // Si es un gradiente, crearlo
+  if (baseColor && typeof baseColor === 'object') {
+    const gradConfig = baseColor as GradientConfig;
+    return createCanvasGradient(ctx, gradConfig, x, y);
+  }
+  
+  // Valor base como string simple
+  return typeof baseColor === 'string' ? baseColor : '#000000';
+};
+
+// Función para crear un gradiente en el canvas
+const createGradient = (
+  gradConfig: GradientConfig,
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): CanvasGradient => {
+  let gradient: CanvasGradient;
+  
+  if (gradConfig.type === 'linear') {
+    // Gradiente lineal
+    const coords = gradConfig.coords || {};
+    const x1 = Number(coords.x1 ?? 0) * width;
+    const y1 = Number(coords.y1 ?? 0) * height;
+    const x2 = Number(coords.x2 ?? 1) * width;
+    const y2 = Number(coords.y2 ?? 0) * height;
+    
+    gradient = ctx.createLinearGradient(
+      x + x1, 
+      y + y1, 
+      x + x2, 
+      y + y2
+    );
+  } else {
+    // Gradiente radial (por defecto)
+    const coords = gradConfig.coords || {};
+    const cx = Number(coords.cx ?? 0.5) * width;
+    const cy = Number(coords.cy ?? 0.5) * height;
+    const r = Number(coords.r ?? 0.5) * Math.max(width, height);
+    
+    // Valores para el círculo interior (opcional)
+    const fx = Number(coords.fx ?? cx) * width;
+    const fy = Number(coords.fy ?? cy) * height;
+    
+    gradient = ctx.createRadialGradient(
+      x + fx, 
+      y + fy, 
+      0, 
+      x + cx, 
+      y + cy, 
+      r
+    );
+  }
+  
+  // Añadir paradas de color
+  for (const stop of gradConfig.stops || []) {
+    gradient.addColorStop(stop.offset, stop.color);
+  }
+  
+  return gradient;
+};
+
+// Función para determinar si un vector está dentro de los límites de visualización
+const isVectorInBounds = (vector: AnimatedVectorItem, bounds: ViewportBounds, padding: number): boolean => {
+  // Obtener posición del vector
+  const { x, y } = vector;
+  
+  // Comprobar si el punto base del vector está en los límites con padding
+  return (
+    x >= bounds.minX - padding && 
+    x <= bounds.maxX + padding && 
+    y >= bounds.minY - padding && 
+    y <= bounds.maxY + padding
+  );
+};
+
+// Función auxiliar para obtener metadatos del vector (hover, selección, etc.)
+const getVectorMetadata = (item: AnimatedVectorItem, hoveredId?: string | null): VectorRenderMetadata => {
+  return {
+    isHovered: Boolean(hoveredId && item.id === hoveredId),
+    isSelected: false
+  };
+
+// Definición del componente principal
+const VectorCanvasRenderer = ({ 
   vectors,
   width,
   height,
@@ -147,745 +297,642 @@ const VectorCanvasRendererComponent: React.FC<VectorCanvasRendererProps> = ({
   baseVectorColor,
   baseVectorWidth,
   baseStrokeLinecap = 'round',
-  baseVectorShape,
-  baseRotationOrigin,
+  baseVectorShape = 'line',
+  baseRotationOrigin = 'center',
   customRenderer,
   userSvgString,
   userSvgPreserveAspectRatio,
   onVectorClick,
   onVectorHover,
   interactionEnabled = true,
-  cullingEnabled = false,
-  debugMode = false
-}) => {
-  // Referencia para el canvas principal
+  cullingEnabled = true,
+  debugMode = false,
+  frameInfo = { timestamp: Date.now(), frameCount: 0, deltaTime: 0, totalFrames: 1000 }
+}: VectorCanvasRendererProps) => {
+  // Inicializar el logger para este componente con throttling
+  const logger = useMemo(() => {
+    return createComponentLogger('VectorCanvasRenderer', {
+      enabled: !!debugMode,
+      throttleInterval: 2000, // Reducir logs a máximo uno cada 2 segundos
+      level: 'info'
+    });
+  }, [debugMode]);
+
+  // Referencia para el canvas
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
-  // Referencia para el cache de SVG
-  const userSvgCacheRef = useRef<HTMLCanvasElement | null>(null);
+  // Cache para SVG personalizado si existe
+  const svgCacheCanvasRef = useRef<HTMLCanvasElement | null>(null);
   
-  // Estado para vectores resaltados (hover)
+  // Estados para gestionar la interactividad
   const [hoveredVectorId, setHoveredVectorId] = useState<string | null>(null);
+  
+  // Referencias para animación
+  const animationFrameRef = useRef<number | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const lastRenderTimeRef = useRef<number>(0);
+  
+  // Función para configurar un canvas (dimensiones, DPR, etc.)
+  const setupCanvas = useCallback((canvas: HTMLCanvasElement | null, clear: boolean = true): CanvasRenderingContext2D | null => {
+    if (!canvas || width <= 0 || height <= 0) return null;
 
-  // Efecto para renderizar SVG en un canvas separado (cache)
-  // Solo se ejecuta cuando cambia userSvgString o userSvgPreserveAspectRatio
-  useEffect(() => {
-    if (!userSvgString || !Canvg) {
-      // Si no hay SVG o no se ha cargado Canvg, limpiar la referencia
-      userSvgCacheRef.current = null;
-      return;
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) return null;
+    
+    // Limpiar canvas si es necesario
+    if (clear) {
+      ctx.clearRect(0, 0, width, height);
+      if (backgroundColor) {
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(0, 0, width, height);
+      }
     }
     
-    // Función para crear el cache de SVG
+    // Configuración avanzada para alta calidad
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // Optimización para pantallas de alta densidad
+    const pixelRatio = window.devicePixelRatio || 1;
+    if (pixelRatio > 1) {
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      canvas.width = width * pixelRatio;
+      canvas.height = height * pixelRatio;
+      ctx.scale(pixelRatio, pixelRatio);
+    }
+    
+    return ctx;
+  }, [backgroundColor, width, height]);
+  
+  // Calcular vectores visibles
+  // Calcular padding para culling adaptativo usando la utilidad compartida
+  const canvasPadding = useMemo(() => {
+    const baseLengthValue = typeof baseVectorLength === 'number' 
+      ? baseVectorLength 
+      : (vectors.length > 0 ? 20 : 50);
+    
+    return calculateAdaptivePadding(vectors, 150);
+  }, [baseVectorLength, vectors]);
+  
+  // Aplicar culling optimizado usando la función de utilidad
+  const visibleVectors = useMemo(() => {
+    if (!cullingEnabled || vectors.length === 0) return vectors;
+    
+    // Asegurar que las dimensiones sean válidas
+    if (width <= 0 || height <= 0) {
+      if (debugMode) {
+        logger.warn('Dimensiones inválidas para culling', { width, height });
+      }
+      return vectors;
+    }
+    
+    try {
+      // Aplicar culling para optimizar renderizado
+      logger.debug(`Aplicando culling: ${vectors.length} vectores, viewport ${width}x${height}`);
+      
+      // Usar el padding adaptativo calculado
+      return applyCulling(vectors, width, height, canvasPadding);
+    } catch (error) {
+      logger.error('Error al aplicar culling:', error);
+      return vectors;
+    }
+
+      // Usar la utilidad de culling compartida
+      return applyCulling(vectors, viewport, {
+        padding: canvasPadding,
+        enableLOD: vectors.length > 200, // Activar LOD solo con muchos vectores
+        useQuadtree: false
+      });
+    } catch (error) {
+      if (debugMode) {
+        logger.error('Error durante culling', error);
+      }
+      return vectors; // En caso de error, devolver todos los vectores
+    }
+  }, [vectors, width, height, cullingEnabled, canvasPadding, debugMode, logger]);
+
+  // Efecto para renderizar el cache de SVG si existe
+  useEffect(() => {
+    if (!userSvgString || !Canvg) return;
+    
     const createSvgCache = async () => {
       try {
-        // Crear un canvas temporal
+        // Crear canvas fuera de pantalla para renderizar
         const cacheCanvas = document.createElement('canvas');
         const ctx = cacheCanvas.getContext('2d');
-        if (!ctx) {
-          // No se pudo obtener contexto 2D para el cache de SVG
-          return;
-        }
+        if (!ctx) return;
         
-        // Tamaño base para el SVG (luego se escala al renderizar)
+        // Configurar dimensiones iniciales
         cacheCanvas.width = 100;
         cacheCanvas.height = 100;
         
-        // Limpiar el canvas
-        ctx.clearRect(0, 0, cacheCanvas.width, cacheCanvas.height);
-        
-        // Renderizar el SVG en el canvas usando Canvg
+        // Crear SVG y renderizarlo en el canvas
         const v = await Canvg.from(ctx, userSvgString, {
           ignoreMouse: true,
-          ignoreAnimation: true
-          // 'preserveAspectRatio' no es una opción válida en IOptions de Canvg
+          ignoreAnimation: true,
+          preserveAspectRatio: userSvgPreserveAspectRatio || 'xMidYMid meet'
         });
         
         await v.render();
         
-        // Guardar el canvas en la referencia
-        userSvgCacheRef.current = cacheCanvas;
-        // console.log('SVG renderizado correctamente en cache');
-      } catch (err) {
-        // console.error('Error al renderizar SVG en cache:', err);
-        userSvgCacheRef.current = null;
+        // Guardar el canvas en la referencia para uso futuro
+        svgCacheCanvasRef.current = cacheCanvas;
+      } catch (error) {
+        console.error('Error al crear cache SVG:', error);
       }
     };
     
     createSvgCache();
   }, [userSvgString, userSvgPreserveAspectRatio]);
-  
-  // Aplicar culling si está habilitado para optimizar el rendimiento visual
-  // Solo se recalcula cuando cambian los vectores, el ancho, el alto o la configuración de culling
-  const optimizedVectors = useMemo(() => {
-    if (cullingEnabled && width > 0 && height > 0) {
-      // Aplicar culling con precisión controlada para mantener consistencia visual
-      const culledVectors = applyCulling(
-        vectors, 
-        fixPrecision(width, 0),
-        fixPrecision(height, 0),
-        {
-          // Habilitar nivel de detalle para vectores lejanos
-          enableLOD: true,
-          // Añadir padding para evitar cortes bruscos en los bordes
-          padding: fixPrecision(Math.max(50, typeof baseVectorLength === 'number' ? baseVectorLength / 2 : 10), 0),
-          // Usar quadtree solo si hay muchos vectores (>1000)
-          useQuadtree: vectors.length > 1000
-        }
-      );
-      
-      if (debugMode) {
-        // Log del porcentaje de vectores optimizados
-        const optimizationRate = fixPrecision((1 - culledVectors.length / vectors.length) * 100, 1);
-        // eslint-disable-next-line no-console
-        console.info(`[Culling Canvas] Optimizados ${optimizationRate}% (${culledVectors.length}/${vectors.length} vectores renderizados)`);
-      }
-      
-      return culledVectors;
-    }
-    
-    return vectors;
-  }, [vectors, width, height, cullingEnabled, baseVectorLength, debugMode]);
 
-  // Efecto principal de renderizado
-  // Solo se ejecuta cuando cambian las dependencias relevantes
-  useEffect(() => {
-    // No renderizar si las dimensiones no son válidas
-    if (width <= 0 || height <= 0) {
-      if (debugMode) {
-        console.log('[VectorCanvasRenderer] Saltando renderizado: dimensiones inválidas', { width, height });
-      }
-      return;
-    }
+  // Renderizar el contenido del canvas
+  const renderCanvas = useCallback(() => {
+    if (!canvasRef.current) return;
+    
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    // Asegurar dimensiones mínimas
-    const safeWidth = Math.max(1, width || 0);
-    const safeHeight = Math.max(1, height || 0);
-    
-    if (debugMode) {
-      console.log('[Canvas] Dimensiones:', { width: safeWidth, height: safeHeight });
-    }
-
     const ctx = canvas.getContext('2d');
+    
     if (!ctx) {
-      console.error('No se pudo obtener el contexto 2D del canvas');
+      console.error('No se pudo obtener el contexto 2D del canvas.');
       return;
     }
-
-    // Manejar DPR (Device Pixel Ratio) para pantallas de alta densidad
-    const dpr = window.devicePixelRatio || 1;
     
-    // Ajustar dimensiones físicas del canvas
-    canvas.width = safeWidth * dpr;
-    canvas.height = safeHeight * dpr;
+    // Limpiar el canvas antes de renderizar
+    ctx.clearRect(0, 0, width, height);
     
-    // Ajustar dimensiones de visualización (CSS)
-    canvas.style.width = safeWidth + 'px';
-    canvas.style.height = safeHeight + 'px';
-    
-    // Aplicar escala para manejar DPR
-    ctx.scale(dpr, dpr);
-    
-    // Estilos de depuración
-    if (debugMode) {
-      canvas.style.border = '2px dashed red';
-      canvas.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
-    }
-
-    // Limpiar el canvas
-    ctx.clearRect(0, 0, safeWidth, safeHeight);
-    
-    // Dibujar el fondo si no es transparente
+    // Establecer color de fondo si no es transparente
     if (backgroundColor !== 'transparent') {
       ctx.fillStyle = backgroundColor;
-      ctx.fillRect(0, 0, safeWidth, safeHeight);
-    } else if (debugMode) {
-      // Fondo de cuadrícula para depuración
-      ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
-      ctx.lineWidth = 1;
-      const gridSize = 20;
-      
-      // Líneas verticales
-      for (let x = 0; x <= safeWidth; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, safeHeight);
-        ctx.stroke();
-      }
-      
-      // Líneas horizontales
-      for (let y = 0; y <= safeHeight; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(safeWidth, y);
-        ctx.stroke();
-      }
+      ctx.fillRect(0, 0, width, height);
     }
-
-    // Log de depuración
-    if (debugMode) {
-      console.log('[CanvasRenderer] Renderizando', optimizedVectors.length, 'vectores');
-      console.log('[CanvasRenderer] Dimensiones:', { width, height });
-      if (optimizedVectors.length > 0) {
-        console.log('[CanvasRenderer] Primer vector:', optimizedVectors[0]);
-      }
-    }
-
-    // Renderizar cada vector
-    optimizedVectors.forEach((vector) => {
-      const { lengthFactor = 1, widthFactor = 1 } = vector;
-      // Asegurar valores base con manejo de undefined
-      const baseX = ensureSafeNumber(vector.baseX, 0, 2);
-      const baseY = ensureSafeNumber(vector.baseY, 0, 2);
-      const vectorAngle = ensureSafeNumber(vector.currentAngle, 0, 4);
+    
+    // Asegurarnos que frameInfo tenga un valor válido y completo
+    const currentFrameInfo: FrameInfo = {
+      timestamp: frameInfo?.timestamp || Date.now(),
+      frameCount: frameInfo?.frameCount || 0,
+      deltaTime: frameInfo?.deltaTime || 16.667, // ~60fps
+      totalFrames: frameInfo?.totalFrames || 1000
+    };
+    
+    // Variables para rendimiento
+    let vectorsDrawn = 0;
+    let pathsGrouped = 0;
+    
+    // Técnica de batching - agrupar vectores por forma y color para minimizar cambios de contexto
+    const batchedVectors: Map<string, AnimatedVectorItem[]> = new Map();
+    
+    visibleVectors.forEach(vector => {
+      // Tratar vector como ExtendedVectorItem para acceder a propiedades adicionales
+      const extVector = vector as ExtendedVectorItem;
       
-      // Saltar renderizado si las coordenadas base no son válidas
-      if (isNaN(baseX) || isNaN(baseY)) {
-        if (debugMode) {
-          console.warn('Vector con coordenadas inválidas:', { baseX, baseY, vector });
-        }
-        return;
-      }
+      // Clave de agrupación: forma + grosor + estilo de línea
+      const shape = extVector.shape ?? baseVectorShape;
+      const strokeWidth = calculateVectorWidth(vector, baseVectorWidth, currentFrameInfo);
+      const linecap = extVector.strokeLinecap ?? baseStrokeLinecap;
       
-      // Determinar longitud y ancho del vector - con validación de valores finitos
-      let actualVectorLength = ensureSafeNumber(
-        typeof baseVectorLength === 'function' 
-        ? baseVectorLength(vector) * lengthFactor 
-        : baseVectorLength * lengthFactor
-      );
+      const batchKey = `${shape}-${strokeWidth.toFixed(1)}-${linecap}`;
       
-      let actualStrokeWidth = ensureSafeNumber(
-        typeof baseVectorWidth === 'function'
-        ? baseVectorWidth(vector) * widthFactor
-        : baseVectorWidth * widthFactor
-      );
-      
-      // Asegurar que los valores sean finitos con precisión controlada
-      actualVectorLength = ensureSafeNumber(actualVectorLength, 10, 2); // Valor predeterminado de 10px, 2 decimales
-      actualStrokeWidth = ensureSafeNumber(actualStrokeWidth, 1, 2);   // Valor predeterminado de 1px, 2 decimales
-      
-      // Asegurar que los valores estén dentro de rangos razonables
-      actualVectorLength = Math.max(0.1, Math.min(1000, actualVectorLength));
-      actualStrokeWidth = Math.max(0.1, Math.min(100, actualStrokeWidth));
-      
-      // Calcular offset de rotación con validación
-      const rotationOffset = ensureSafeNumber(getRotationOffset(baseRotationOrigin, actualVectorLength));
-      
-      // Guardar estado del contexto
-      ctx.save();
-      
-      // Determinar el color a utilizar (string, función o gradiente)
-      let styleColor: string | CanvasGradient = "var(--primary)"; // Color por defecto
-      
-      // Preparar propiedades para el renderizado personalizado
-      const renderProps: VectorRenderProps = {
-        item: vector,
-        dimensions: { width, height },
-        baseVectorLength: typeof baseVectorLength === 'function' ? baseVectorLength(vector) : baseVectorLength,
-        baseVectorColor: styleColor,
-        baseVectorWidth: typeof baseVectorWidth === 'function' ? baseVectorWidth(vector) : baseVectorWidth,
-        baseStrokeLinecap: baseStrokeLinecap,
-        baseVectorShape: baseVectorShape,
-        baseRotationOrigin: baseRotationOrigin,
-        actualLength: actualVectorLength,
-        actualStrokeWidth: actualStrokeWidth,
-        getRotationOffset: (origin: 'start' | 'center' | 'end', len: number) => 
-          origin === 'center' ? len / 2 : origin === 'end' ? len : 0,
-        // Añadimos el contexto de canvas como propiedad no tipada para compatibilidad
-        ctx: ctx as any
-      };
-      
-      // Si hay un renderizador personalizado, llamarlo primero
-      if (typeof customRenderer === 'function') {
-        try {
-          // Llamar al renderizador personalizado con las propiedades y el contexto
-          customRenderer(renderProps, renderProps.ctx);
-          // El renderizador personalizado es responsable de manejar su propio save/restore
-        } catch (error) {
-          console.error('Error en renderizador personalizado:', error);
-          // Restaurar el contexto en caso de error para evitar corrupción del estado
-          ctx.restore();
-          ctx.save();
-        }
+      if (!batchedVectors.has(batchKey)) {
+        batchedVectors.set(batchKey, []);
       }
       
-      if (typeof baseVectorColor === 'string') {
-        // Color simple (string)
-        styleColor = baseVectorColor;
-      } else if (typeof baseVectorColor === 'function') {
-        // Función que genera un color
-        try {
-          // Pasamos el vector actual, frame 0 (podríamos implementar un contador), total frames 1, y timestamp actual
-          const calculatedColor = baseVectorColor(vector, 0, 1, performance.now());
-          if (typeof calculatedColor === 'string') {
-            styleColor = calculatedColor;
-          }
-        } catch (err) {
-          // console.error('Error al calcular color dinámico:', err);
-        }
-      } else if (baseVectorColor && typeof baseVectorColor === 'object') {
-        // Posible gradiente
-        const gradConfig = baseVectorColor as GradientConfig;
-        if (gradConfig.type && gradConfig.stops && gradConfig.coords) {
-          // Calcular dimensiones locales para el gradiente
-          const unitFactorX = actualVectorLength;
-          const unitFactorY = actualStrokeWidth * 2;
-          
+      batchedVectors.get(batchKey)?.push(vector);
+    });
+    
+    // Renderizar cada batch de vectores
+    batchedVectors.forEach((vectorBatch) => {
+      vectorBatch.forEach(item => {
+        const { baseX, baseY, currentAngle, lengthFactor = 1, widthFactor = 1 } = item;
+        
+        // Determinar longitud y ancho del vector
+        const actualVectorLength = calculateVectorLength(item, baseVectorLength, currentFrameInfo);
+        const actualStrokeWidth = calculateVectorWidth(item, baseVectorWidth, currentFrameInfo);
+        
+        // Obtener metadatos del vector (hover, selección, etc.)
+        const metadata = getVectorMetadata(item, hoveredVectorId);
+        
+        // Guardar estado actual del contexto
+        ctx.save();
+        
+        // Posicionar y rotar
+        ctx.translate(baseX, baseY);
+        ctx.rotate((currentAngle || 0) * (Math.PI / 180));
+        
+        // Calcular punto de inicio de rotación según origen
+        // Nos aseguramos de que el valor sea uno de los permitidos por RotationOrigin
+        const safeRotationOrigin = (baseRotationOrigin || 'center') as RotationOrigin;
+        const rotationOffset = getRotationOffset(safeRotationOrigin, actualVectorLength);
+        ctx.translate(-rotationOffset, 0);
+        
+        // Configurar estilo de trazo
+        ctx.lineWidth = actualStrokeWidth;
+        
+        // Usar el strokeLinecap del vector si está especificado, o el valor base si no
+        // Casting necesario para TypeScript ya que sabemos que estos valores son compatibles
+        ctx.lineCap = (item.strokeLinecap || baseStrokeLinecap || 'round') as CanvasLineCap;
+        
+        // Determinar color a usar
+        let styleColor: string | CanvasGradient = '#000000'; // Color por defecto
+        
+        if (typeof baseVectorColor === 'string') {
+          // Asegurar mejor contraste para colores sólidos
+          styleColor = ensureContrastColor(baseVectorColor, backgroundColor || '#000000');
+        } else if (typeof baseVectorColor === 'object' && baseVectorColor !== null) {
+          // Manejar objeto GradientConfig para gradientes
           try {
-            let gradient: CanvasGradient;
-            
-            // Función auxiliar para asegurar valores numéricos finitos con precisión controlada
-            
-            if (gradConfig.type === 'linear') {
-              // Gradiente lineal con validación
-              // Extraer valores base
-              let x1 = Number(gradConfig.coords?.x1 ?? 0);
-              let y1 = Number(gradConfig.coords?.y1 ?? 0);
-              let x2 = Number(gradConfig.coords?.x2 ?? 1);
-              let y2 = Number(gradConfig.coords?.y2 ?? 0);
-              
-              // Validar valores y usar valores por defecto si no son finitos
-              x1 = ensureSafeNumber(x1, 0);
-              y1 = ensureSafeNumber(y1, 0);
-              x2 = ensureSafeNumber(x2, 1); // Valor por defecto 1 para x2
-              y2 = ensureSafeNumber(y2, 0);
-              
-              // Aplicar escalado
-              x1 = ensureSafeNumber(x1 * unitFactorX, 0);
-              y1 = ensureSafeNumber(y1 * unitFactorY, 0);
-              x2 = ensureSafeNumber(x2 * unitFactorX, unitFactorX);
-              y2 = ensureSafeNumber(y2 * unitFactorY, 0);
-              
-              gradient = ctx.createLinearGradient(x1, y1, x2, y2);
-            } else {
-              // Gradiente radial con validación
-              // Extraer valores base
-              let cx = Number(gradConfig.coords?.cx ?? 0.5);
-              let cy = Number(gradConfig.coords?.cy ?? 0.5);
-              let r = Number(gradConfig.coords?.r ?? 0.5);
-              let fx = Number(gradConfig.coords?.fx ?? cx);
-              let fy = Number(gradConfig.coords?.fy ?? cy);
-              
-              // Validar valores
-              cx = ensureSafeNumber(cx, 0.5);
-              cy = ensureSafeNumber(cy, 0.5);
-              r = ensureSafeNumber(r, 0.5);
-              fx = ensureSafeNumber(fx, cx);
-              fy = ensureSafeNumber(fy, cy);
-              
-              // Aplicar escalado
-              cx = ensureSafeNumber(cx * unitFactorX, unitFactorX * 0.5);
-              cy = ensureSafeNumber(cy * unitFactorY, unitFactorY * 0.5);
-              r = ensureSafeNumber(r * Math.max(unitFactorX, unitFactorY), Math.max(unitFactorX, unitFactorY) * 0.5);
-              fx = ensureSafeNumber(fx * unitFactorX, cx);
-              fy = ensureSafeNumber(fy * unitFactorY, cy);
-              
-              gradient = ctx.createRadialGradient(
-                fx, fy, 0, // Origen interno del gradiente
-                cx, cy, r  // Origen externo y radio final
+            if ('type' in baseVectorColor && baseVectorColor.type === 'linear') {
+              const gradient = ctx.createLinearGradient(
+                0, 0, actualVectorLength, 0
               );
+              
+              baseVectorColor.stops.forEach(stop => {
+                // Mejorar contraste en cada parada del gradiente si es necesario
+                const enhancedColor = typeof stop.color === 'string' 
+                  ? ensureContrastColor(stop.color, backgroundColor || '#000000')
+                  : stop.color;
+                gradient.addColorStop(stop.offset, enhancedColor);
+              });
+              
+              styleColor = gradient;
             }
+          } catch (error) {
+            console.error('[VectorCanvasRenderer] Error al crear gradiente:', error);
+            styleColor = '#a0a0a0'; // Color de fallback con mejor contraste
+          }
+        } else if (typeof baseVectorColor === 'function') {
+          try {
+            // Calculamos el timestamp, frameCount, etc. si no se proporciona frameInfo
+            const timestamp = currentFrameInfo.timestamp;
+            const totalFrames = currentFrameInfo.totalFrames || 1000;
+            const frameCount = currentFrameInfo.frameCount || 0;
             
-            // Añadir paradas de color con validación
-            for (const stop of gradConfig.stops) {
-              try {
-                // Asegurar que el offset sea un número finito entre 0 y 1
-                let offset = Number(stop.offset);
-                offset = ensureSafeNumber(offset, 0);
-                offset = Math.max(0, Math.min(1, offset)); // Limitar entre 0 y 1
-                
-                gradient.addColorStop(
-                  offset, 
-                  stop.color || "var(--primary)" // Valor por defecto si el color es inválido
-                );
-              } catch (err) {
-                // console.error('Error al añadir parada de color:', err);
-              }
+            const calculatedColor = baseVectorColor(item, frameCount, totalFrames, timestamp);
+            if (typeof calculatedColor === 'string') {
+              styleColor = calculatedColor;
             }
-            
-            styleColor = gradient;
           } catch (err) {
-            // console.error('Error al crear gradiente:', err);
+            console.error('Error al calcular color dinámico de vector:', err);
           }
         }
-      }
-      
-      // Aplicar estilos finales
-      ctx.strokeStyle = styleColor;
-      ctx.fillStyle = styleColor;
-      ctx.lineWidth = actualStrokeWidth;
-      ctx.lineCap = baseStrokeLinecap;
-      
-      // Transformaciones
-      ctx.translate(fixPrecision(baseX), fixPrecision(baseY));
-      ctx.rotate(fixPrecision(vectorAngle * (Math.PI / 180))); // Convertir grados a radianes
-      ctx.translate(-rotationOffset, 0);
-      
-      // Dibujar vector según su forma
-      ctx.beginPath();
-      
-      switch (baseVectorShape) {
-        case 'arrow': {
-          // Dibujar una flecha
-          const drawArrow = (x: number, y: number, angle: number, length: number, width: number) => {
-            ctx.save();
-            ctx.translate(fixPrecision(x), fixPrecision(y));
-            // Convertir ángulo de grados a radianes para la rotación
-            const angleInRadians = fixPrecision(angle * (Math.PI / 180));
-            ctx.rotate(angleInRadians);
-            
-            // Dibujar la línea
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(fixPrecision(length), 0);
-            ctx.stroke();
-            
-            // Dibujar la punta de flecha
-            const arrowHeadSize = fixPrecision(Math.min(length * 0.3, width * 2 + 5));
-            ctx.beginPath();
-            ctx.moveTo(fixPrecision(length), 0);
-            ctx.lineTo(fixPrecision(length - arrowHeadSize), fixPrecision(-arrowHeadSize / 2));
-            ctx.lineTo(fixPrecision(length - arrowHeadSize), fixPrecision(arrowHeadSize / 2));
-            ctx.closePath();
-            ctx.fill();
-            
-            ctx.restore();
-          };
-          drawArrow(0, 0, vectorAngle, actualVectorLength, actualStrokeWidth);
-          break;
+        
+        // Efectos especiales para hover
+        if (metadata.isHovered) {
+          ctx.globalAlpha = 0.8;
+          ctx.shadowColor = 'rgba(0, 0, 255, 0.5)';
+          ctx.shadowBlur = 10;
         }
         
-        case 'dot': {
-          // Círculo simple centrado en la posición base
-          ctx.arc(0, 0, fixPrecision(actualStrokeWidth), 0, Math.PI * 2);
-          ctx.fill();
-          break;
-        }
+        ctx.strokeStyle = styleColor;
         
-        case 'triangle': {
-          // Triángulo con punta hacia la derecha
-          const triangleHeight = fixPrecision(actualVectorLength);
-          const triangleWidth = fixPrecision(actualStrokeWidth * 2);
+        // Usar renderer personalizado si existe
+        if (customRenderer) {
+          customRenderer({
+            item,
+            length: actualVectorLength,
+            width: actualStrokeWidth,
+            metadata
+          }, ctx);
+        } else {
+          // Dibujar vector según su forma
+          const extItem = item as ExtendedVectorItem;
+          const shape = extItem.shape || baseVectorShape;
           
           ctx.beginPath();
-          ctx.moveTo(0, 0);  // Base izquierda
-          ctx.lineTo(0, fixPrecision(-triangleWidth / 2));  // Arriba
-          ctx.lineTo(triangleHeight, 0);  // Punta
-          ctx.lineTo(0, fixPrecision(triangleWidth / 2));  // Abajo
-          ctx.closePath();
-          ctx.fill();
-          break;
-        }
-        
-        case 'semicircle': {
-          // Semicircle with flat edge at left (origin)
-          ctx.arc(fixPrecision(actualVectorLength / 2), 0, fixPrecision(actualVectorLength / 2), Math.PI, 0, false);
-          ctx.stroke();
-          break;
-        }
-        
-        case 'curve': {
-          // Curva cuadrática simple
-          const amplitude = fixPrecision(actualStrokeWidth);
-          const steps = 20; // Más pasos para curvas más suaves
           
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          
-          for (let i = 0; i <= steps; i++) {
-            const x = fixPrecision((i / steps) * actualVectorLength);
-            const y = fixPrecision(amplitude * Math.sin((i / steps) * Math.PI));
-            ctx.lineTo(x, y);
-          }
-          
-          ctx.stroke();
-          break;
-        }
-        
-        case 'userSvg':
-        case 'custom': {
-          // Renderizar SVG desde el cache si existe
-          if (userSvgCacheRef.current && userSvgString) {
-            try {
-              // Calcular dimensiones para mantener proporciones
-              const svgSize = Math.max(actualVectorLength, actualStrokeWidth * 5);
-              // const svgScale = svgSize / 100; // El cache se renderiza a 100x100
+          switch (shape) {
+            case 'arrow': {
+              // Dibujar el cuerpo de la flecha
+              const arrowHeadSize = Math.min(actualVectorLength * 0.3, actualStrokeWidth * 2 + 5);
+              const lineLength = actualVectorLength - arrowHeadSize * 0.8;
               
-              // Centrar el SVG en el punto de origen
-              const offsetX = 0; // Podemos ajustar esto para alinear mejor
-              const offsetY = fixPrecision(-svgSize / 2); // Centrar verticalmente
-              
-              // Dibujar el SVG cacheado
-              ctx.drawImage(
-                userSvgCacheRef.current,
-                offsetX, offsetY, // Posición de destino
-                fixPrecision(svgSize), fixPrecision(svgSize)  // Tamaño de destino
-              );
-              
-              // Mostrar debug info si es necesario (quitar en producción)
-              // console.log(`SVG renderizado: tamaño ${svgSize}px, escala ${svgScale}`);
-            } catch (err) {
-              // console.error('Error al renderizar SVG cacheado:', err);
-              
-              // Fallback: Renderizar un rectángulo simple como indicador de error
-              ctx.fillStyle = 'rgba(255,0,0,0.3)';
-              ctx.fillRect(0, fixPrecision(-actualStrokeWidth), fixPrecision(actualVectorLength), fixPrecision(actualStrokeWidth * 2));
-              ctx.strokeRect(0, fixPrecision(-actualStrokeWidth), fixPrecision(actualVectorLength), fixPrecision(actualStrokeWidth * 2));
+              if (lineLength > 0) {
+                // Dibujar la línea principal
+                ctx.moveTo(0, 0);
+                ctx.lineTo(lineLength, 0);
+                ctx.stroke();
+                
+                // Dibujar la punta triangular
+                ctx.beginPath();
+                ctx.moveTo(lineLength, 0);
+                ctx.lineTo(lineLength - arrowHeadSize, -arrowHeadSize / 2);
+                ctx.lineTo(actualVectorLength, 0);
+                ctx.lineTo(lineLength - arrowHeadSize, arrowHeadSize / 2);
+                ctx.lineTo(lineLength, 0);
+                ctx.fillStyle = styleColor;
+                ctx.fill();
+              } else {
+                // Vector demasiado corto, dibujar solo punta
+                ctx.moveTo(0, 0);
+                ctx.lineTo(actualVectorLength, 0);
+                ctx.stroke();
+              }
+              break;
             }
-          } else {
-            // SVG no disponible - mostrar un marcador simple
-            ctx.fillStyle = 'rgba(200,200,200,0.5)';
-            ctx.fillRect(0, fixPrecision(-actualStrokeWidth), fixPrecision(actualVectorLength), fixPrecision(actualStrokeWidth * 2));
-            ctx.strokeRect(0, fixPrecision(-actualStrokeWidth), fixPrecision(actualVectorLength), fixPrecision(actualStrokeWidth * 2));
+            
+            case 'dot': {
+              // Círculo en el punto final del vector
+              const radius = actualStrokeWidth;
+              ctx.moveTo(0, 0);
+              ctx.lineTo(actualVectorLength - radius, 0);
+              ctx.stroke();
+              
+              // Dibujar punto
+              ctx.beginPath();
+              ctx.arc(actualVectorLength, 0, radius, 0, Math.PI * 2);
+              ctx.fillStyle = styleColor;
+              ctx.fill();
+              break;
+            }
+            
+            case 'custom':
+            case 'userSvg': {
+              // Usar SVG personalizado si existe cache
+              if (svgCacheCanvasRef.current) {
+                const svgSize = actualVectorLength;
+                ctx.drawImage(svgCacheCanvasRef.current, 0, -svgSize / 2, svgSize, svgSize);
+              } else {
+                // Fallback a línea si no hay SVG
+                ctx.moveTo(0, 0);
+                ctx.lineTo(actualVectorLength, 0);
+                ctx.stroke();
+              }
+              break;
+            }
+            
+            case 'line':
+            default: {
+              // Línea simple (caso base, por defecto)
+              ctx.moveTo(0, 0);
+              ctx.lineTo(actualVectorLength, 0);
+              ctx.stroke();
+              break;
+            }
           }
-          break;
         }
         
-        case 'line':
-        default: {
-          // Línea simple (caso base, por defecto)
-          ctx.moveTo(0, 0);
-          ctx.lineTo(fixPrecision(actualVectorLength), 0);
-          ctx.stroke();
-          break;
-        }
-      }
-      
-      // Restaurar estado
-      ctx.restore();
+        // Restaurar estado
+        ctx.restore();
+      });
     });
   }, [
-    vectors, 
-    width, 
-    height, 
-    backgroundColor, 
+    hoveredVectorId,
     baseVectorLength, 
     baseVectorColor,
     baseVectorWidth, 
     baseStrokeLinecap, 
-    baseVectorShape, 
-    baseRotationOrigin,
+    baseVectorShape,
     customRenderer,
-    userSvgString, // Incluir SVG string para re-renderizar cuando cambie
-    // No incluimos onVectorClick y onVectorHover ya que no afectan al renderizado,
-    // solo a la interactividad que se maneja en los event handlers
-    hoveredVectorId
+    visibleVectors,
+    frameInfo,
+    baseRotationOrigin,
+    width,
+    height
   ]);
+  
+  // Función para renderizar la info de debug en el canvas
+  const drawDebugInfo = useCallback((ctx: CanvasRenderingContext2D, allVectors: AnimatedVectorItem[], visibleVectors: AnimatedVectorItem[]) => { 
+    // Dibujar texto de depuración
+    ctx.font = '12px Arial';
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    
+    // Mostrar información de vectores
+    ctx.fillText(`Vectors: ${allVectors.length} (${visibleVectors.length} visible)`, 10, 10);
+    ctx.fillText(`Culling: ${cullingEnabled ? 'ON' : 'OFF'}`, 10, 25);
+  }, [cullingEnabled]);
 
-  // Función para detectar si un punto (x,y) está dentro del área de un vector
-  const isPointInVector = (x: number, y: number, vector: AnimatedVectorItem): boolean => {
-    if (!interactionEnabled) return false;
-    
-    const { baseX, baseY, lengthFactor = 1, widthFactor = 1 } = vector;
-    const vectorAngle = ensureSafeNumber(vector.currentAngle || 0);
-    
-    // Calcular dimensiones reales
-    const actualVectorLength = ensureSafeNumber(
-      typeof baseVectorLength === 'function' 
-      ? baseVectorLength(vector) * lengthFactor 
-      : baseVectorLength * lengthFactor
-    );
-    
-    const actualStrokeWidth = ensureSafeNumber(
-      typeof baseVectorWidth === 'function'
-      ? baseVectorWidth(vector) * widthFactor
-      : baseVectorWidth * widthFactor
-    );
+  // Efecto para el bucle de animación
+  useEffect(() => {
+    const animate = () => {
+      const now = performance.now();
+      const elapsed = now - lastRenderTimeRef.current;
       
-    // Calcular desplazamiento para rotación
-    const rotationOffset = getRotationOffset(baseRotationOrigin, actualVectorLength);
-    
-    // Convertir el punto del canvas al sistema de coordenadas del vector
-    // 1. Trasladar al origen del vector
-    const translatedX = x - baseX;
-    const translatedY = y - baseY;
-    
-    // 2. Rotar en sentido inverso
-    const angleInRadians = fixPrecision(vectorAngle * (Math.PI / 180));
-    const rotatedX = fixPrecision(translatedX * Math.cos(-angleInRadians) - translatedY * Math.sin(-angleInRadians));
-    const rotatedY = fixPrecision(translatedX * Math.sin(-angleInRadians) + translatedY * Math.cos(-angleInRadians));
-    
-    // 3. Considerar el desplazamiento de rotación
-    const adjustedX = rotatedX + rotationOffset;
-    
-    // Definir el área de detección según la forma del vector
-    switch (baseVectorShape) {
-      case 'dot': {
-        // Para un punto, el área es un círculo
-        const distance = fixPrecision(Math.sqrt(Math.pow(rotatedX, 2) + Math.pow(rotatedY, 2)));
-        return distance <= fixPrecision(actualStrokeWidth * 1.5); // Área un poco más grande para facilitar la interacción
+      // Solo renderizar si han pasado suficientes ms (máx 60 FPS)
+      if (elapsed > 16) { // ~60fps
+        renderCanvas();
+        lastRenderTimeRef.current = now;
       }
       
-      case 'arrow':
-      case 'triangle': {
-        // Hacemos una detección rectangular pero más ancha en la punta
-        return adjustedX >= -actualStrokeWidth && 
-               adjustedX <= actualVectorLength + actualStrokeWidth && 
-               Math.abs(rotatedY) <= Math.max(actualStrokeWidth * 2, actualVectorLength * 0.2);
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+    
+    // Iniciar animación
+    lastRenderTimeRef.current = performance.now();
+    animationFrameRef.current = requestAnimationFrame(animate);
+    
+    // Limpiar al desmontar
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
-      
-      case 'semicircle':
-      case 'curve': {
-        // Para curvas, usamos una detección basada en distancia a la curva 
-        // (simplificada como un rectángulo para esta implementación)
-        return adjustedX >= -actualStrokeWidth && 
-               adjustedX <= actualVectorLength + actualStrokeWidth && 
-               Math.abs(rotatedY) <= actualVectorLength * 0.4;
-      }
-      
-      case 'line':
-      default: {
-        // Para líneas, el área es un rectángulo alargado
-        return adjustedX >= -actualStrokeWidth && 
-               adjustedX <= actualVectorLength + actualStrokeWidth && 
-               Math.abs(rotatedY) <= actualStrokeWidth * 2;
-      }
-    }
-  };
-  
-  // Encontrar el vector bajo el cursor
-  const findVectorUnderCursor = (x: number, y: number): AnimatedVectorItem | null => {
-    // Recorremos en orden inverso para manejar correctamente las superposiciones
-    // (los vectores dibujados más tarde están "encima")
-    for (let i = optimizedVectors.length - 1; i >= 0; i--) {
-      if (isPointInVector(x, y, optimizedVectors[i])) {
-        return optimizedVectors[i];
-      }
-    }
-    return null;
-  };
-  
-  // Manejadores de eventos
-  const handleMouseMove = (event: React.MouseEvent): void => {
+    };
+  }, [renderCanvas]);
+
+  // Manejadores de eventos para interactividad (hover, click)
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!interactionEnabled || !onVectorHover) return;
     
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    // Obtener posición del mouse relativa al contenedor del canvas
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
     
-    // Obtener coordenadas del canvas
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const mouseX = e.clientX - canvasRect.left;
+    const mouseY = e.clientY - canvasRect.top;
     
-    // Encontrar el vector bajo el cursor
-    const hoveredVector = findVectorUnderCursor(x, y);
+    // Buscar el vector que está debajo del cursor
+    const hoveredVector = visibleVectors.find(vector => {
+      // Calcular tamaño de hitbox
+      const vectorLength = calculateVectorLength(vector, baseVectorLength, frameInfo);
+      
+      const vectorWidth = calculateVectorWidth(vector, baseVectorWidth, frameInfo);
+      
+      // Crear hitbox rectangular simple
+      const hitboxSize = Math.max(10, vectorWidth * 2);
+      const hitboxLength = vectorLength;
+      
+      // Calcular ángulo en radianes
+      const angleRad = (vector.currentAngle || 0) * (Math.PI / 180);
+      
+      // Calcular offset de rotación
+      const offset = getRotationOffset(baseRotationOrigin, hitboxLength);
+      
+      // Calcular punto de inicio del vector después de aplicar offset
+      const startX = vector.baseX - offset * Math.cos(angleRad);
+      const startY = vector.baseY - offset * Math.sin(angleRad);
+      
+      // Calcular distancia del punto al segmento de línea (simplificado)
+      const dx = mouseX - startX;
+      const dy = mouseY - startY;
+      
+      // Proyectar el punto al vector
+      const projectionLength = dx * Math.cos(angleRad) + dy * Math.sin(angleRad);
+      
+      // Verificar si la proyección está dentro de la longitud del vector
+      if (projectionLength < 0 || projectionLength > hitboxLength) {
+        return false;
+      }
+      
+      // Calcular distancia perpendicular al vector
+      const perpDistance = Math.abs(dx * Math.sin(angleRad) - dy * Math.cos(angleRad));
+      
+      // Está dentro de la hitbox si la distancia perpendicular es menor que la mitad del ancho
+      return perpDistance <= hitboxSize / 2;
+    });
     
-    // Actualizar estado y llamar al callback solo si hay un cambio
-    if (hoveredVector?.id !== hoveredVectorId) {
-      setHoveredVectorId(hoveredVector?.id || null);
-      onVectorHover(hoveredVector, event);
-    }
-  };
-  
-  const handleMouseLeave = (event: React.MouseEvent): void => {
-    if (!interactionEnabled || !onVectorHover) return;
-    
-    // Limpiar el estado al salir del canvas
-    if (hoveredVectorId !== null) {
+    if (hoveredVector) {
+      if (hoveredVector.id !== hoveredVectorId) {
+        setHoveredVectorId(hoveredVector.id);
+        onVectorHover(hoveredVector, e);
+      }
+    } else if (hoveredVectorId !== null) {
+      // El mouse no está sobre ningún vector
       setHoveredVectorId(null);
-      onVectorHover(null, event);
+      onVectorHover(null, e);
     }
-  };
+  }, [
+    interactionEnabled, 
+    onVectorHover,
+    visibleVectors,
+    hoveredVectorId,
+    baseVectorLength,
+    baseVectorWidth,
+    baseRotationOrigin,
+    frameInfo
+  ]);
   
-  const handleClick = (event: React.MouseEvent): void => {
+  const handleMouseLeave = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (interactionEnabled && onVectorHover && hoveredVectorId !== null) {
+      setHoveredVectorId(null);
+      onVectorHover(null, e);
+    }
+  }, [interactionEnabled, onVectorHover, hoveredVectorId]);
+  
+  const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!interactionEnabled || !onVectorClick) return;
     
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    // Obtener coordenadas del canvas
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    
-    // Encontrar el vector bajo el cursor
-    const clickedVector = findVectorUnderCursor(x, y);
-    
-    // Llamar al callback si se encontró un vector
-    if (clickedVector) {
-      onVectorClick(clickedVector, event);
+    // Usar el vector actualmente en hover
+    if (hoveredVectorId) {
+      const clickedVector = visibleVectors.find(
+        vector => vector.id === hoveredVectorId
+      );
+      
+      if (clickedVector) {
+        onVectorClick(clickedVector, e);
+      }
     }
-  };
-
-  // Sistema de logging con throttling
-  const logRender = (() => {
-    if (process.env.NODE_ENV !== 'development' || !debugMode) return () => {};
-    
-    let lastLogTime = 0;
-    const LOG_INTERVAL = 2000; // 2 segundos entre logs
-    let logGroup: string | null = null;
-    
-    return () => {
-      const now = Date.now();
-      if (now - lastLogTime < LOG_INTERVAL) return;
-      
-      lastLogTime = now;
-      
-      // Cerrar grupo anterior si existe
-      if (logGroup) {
-        console.groupEnd();
-      }
-      
-      // Crear nuevo grupo
-      logGroup = `[VectorCanvasRenderer] Renderizado (${width}x${height})`;
-      console.groupCollapsed(logGroup);
-      
-      // Solo mostrar detalles en el primer log
-      if (lastLogTime === now) {
-        console.log('Vectores activos:', optimizedVectors.length);
-        console.log('Dimensiones del canvas:', { width, height });
-        console.log('Color de fondo:', backgroundColor);
-        console.log('Última actualización:', new Date().toLocaleTimeString());
-      }
-      
-      // Usar setTimeout para cerrar el grupo después de un breve retraso
-      // Esto permite ver el grupo expandido en la consola
-      setTimeout(() => {
-        if (logGroup) {
-          console.groupEnd();
-          logGroup = null;
-        }
-      }, 100);
-    };
-  })();
+  }, [interactionEnabled, onVectorClick, hoveredVectorId, visibleVectors]);
   
-  // Ejecutar el logger
-  logRender();
-
+  // Debugging Info - opcional, para mostrar estadísticas, optimizado con throttling
+  const [debugStats, setDebugStats] = useState<{totalVectors: number, visibleVectors: number, fps: number} | null>(null);
+  
+  // Actualizar stats solo en el cliente y solo cuando debugMode está activo, con throttling
+  useEffect(() => {
+    if (!debugMode) {
+      setDebugStats(null);
+      return;
+    }
+    
+    // Actualización inicial
+    setDebugStats({
+      totalVectors: vectors.length,
+      visibleVectors: visibleVectors.length,
+      fps: 0 // Inicialmente 0, se actualizará durante la animación
+    });
+    
+    // Log inicial con estadísticas básicas
+    logger.info('Configuración inicial', {
+      vectores: {
+        total: vectors.length,
+        visibles: visibleVectors.length
+      },
+      dimensiones: { width, height },
+      culling: { activo: cullingEnabled, padding: canvasPadding }
+    });
+    
+    // Se actualizará con menor frecuencia (cada 1s)
+    const statsInterval = setInterval(() => {
+      const now = performance.now();
+      const deltaTime = now - lastRenderTimeRef.current;
+      const currentFps = deltaTime > 0 ? Math.round(1000 / deltaTime) : 0;
+      
+      setDebugStats(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          totalVectors: vectors.length,
+          visibleVectors: visibleVectors.length,
+          fps: currentFps
+        };
+      });
+      
+      // Solo registrar cambios significativos en FPS o cantidad de vectores
+      if (Math.abs(currentFps - (debugStats?.fps || 0)) > 5) {
+        logger.debug('Actualización de rendimiento', { fps: currentFps });
+      }
+    }, 1000); // Actualizar cada 1s para reducir overhead
+    
+    return () => clearInterval(statsInterval);
+  }, [debugMode, vectors.length, visibleVectors.length, width, height, cullingEnabled, canvasPadding, logger]);
+  
+  // Renderizar el componente con diseño mejorado
   return (
     <div className="relative w-full h-full">
+      {/* Canvas principal */}
       <canvas
         ref={canvasRef}
-        className={cn("block w-full h-full bg-blue-50", {
+        className={cn("block w-full h-full", {
           'cursor-pointer': interactionEnabled && onVectorClick,
           'cursor-default': !interactionEnabled || !onVectorClick,
           'border-2 border-dashed border-red-500': debugMode,
         })}
-        onClick={handleClick}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
         width={width}
         height={height}
         style={{
           backgroundColor,
           touchAction: 'none',
         }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        onClick={handleCanvasClick}
+        data-vectors={visibleVectors.length}
+        data-culling={cullingEnabled ? 'enabled' : 'disabled'}
       />
+      
+      {/* Panel de depuración mejorado */}
       {debugMode && (
-        <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs p-2 rounded">
-          Canvas: {width}×{height}px
-        </div>
+        <>
+          {/* Panel de información */}
+          <div className="absolute top-2 left-2 bg-black/70 text-white text-xs p-2 rounded z-10 font-mono">
+            <div>Dimensiones: {width}×{height}px</div>
+            <div>Vectores: {vectors.length} ({visibleVectors.length} visible)</div>
+            <div>Culling: {cullingEnabled ? 'ON' : 'OFF'}</div>
+            <div>Hover: {hoveredVectorId || 'ninguno'}</div>
+            {debugStats && (
+              <div className="mt-1 pt-1 border-t border-white/20">
+                <div>FPS: {debugStats.fps}</div>
+              </div>
+            )}
+          </div>
+          
+          {/* Visualización del área de culling */}
+          {cullingEnabled && (
+            <div 
+              className="absolute border border-dashed border-yellow-500 pointer-events-none z-0 opacity-30"
+              style={{
+                top: `-${canvasPadding}px`,
+                left: `-${canvasPadding}px`,
+                width: `${width + canvasPadding * 2}px`,
+                height: `${height + canvasPadding * 2}px`,
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );
 };
 
-// Exportar el componente memoizado para evitar re-renderizados innecesarios
-export const VectorCanvasRenderer = React.memo(VectorCanvasRendererComponent, areEqual);
-
-// Exportar el componente sin memo para casos de prueba
-export { VectorCanvasRendererComponent };
-
+// Exportación simple para evitar errores
 export default VectorCanvasRenderer;
