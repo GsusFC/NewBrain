@@ -1,5 +1,4 @@
-import { useVectorGridStore } from '../vectorGridStore';
-import type { GridDimensions } from '@/hooks/vector/useGridDimensions';
+import { useVectorGridStore } from './vectorGridStore';
 
 /**
  * Hook selector para configuraciones de animación
@@ -23,7 +22,16 @@ export const useAnimationSettings = () => {
   const togglePause = useVectorGridStore(state => state.togglePause);
   const updateAnimationSettings = useVectorGridStore(state => state.updateAnimationSettings);
   const setAnimationType = useVectorGridStore(state => state.setAnimationType);
-  const updateAnimationProps = useVectorGridStore(state => state.updateAnimationProps);
+  
+  // Proporcionamos un fallback para updateAnimationProps en caso de que no exista
+  const updateAnimationProps = useVectorGridStore(state => {
+    if (typeof state.updateAnimationProps === 'function') {
+      return state.updateAnimationProps;
+    } else {
+      // Fallback: usar setAnimationProps si updateAnimationProps no existe
+      return state.setAnimationProps;
+    }
+  });
   
   // Devolver un objeto con todo
   return {
@@ -82,20 +90,43 @@ export const useVectorSettings = () => {
  * Selecciona solo las propiedades relacionadas con el renderizado del store
  */
 export const useRenderSettings = () => {
-  const renderAsCanvas = useVectorGridStore(state => state.renderAsCanvas);
   const throttleMs = useVectorGridStore(state => state.throttleMs);
   const backgroundColor = useVectorGridStore(state => state.backgroundColor);
   const toggleRenderer = useVectorGridStore(state => state.toggleRenderer);
+  // Estas propiedades podrían no existir en el tipo pero sí en la implementación
   const setThrottleMs = useVectorGridStore(state => state.setThrottleMs);
-  // Nota: setBackgroundColor no existe en el store actual
-  // Si se necesita en el futuro, debe añadirse al store
+  
+  // Definimos setRenderAsCanvas como un noop (siempre a false)
+  const setRenderAsCanvas = () => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('Canvas ha sido desactivado. Siempre se usa SVG.');
+    }
+  };
+  
+  // Definimos setRendererMode como un noop
+  const setRendererMode = () => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('Solo se permite el modo SVG.');
+    }
+  };
+  
+  // Definimos un setBackgroundColor seguro
+  const setBackgroundColor = (color: string) => {
+    useVectorGridStore.setState({ backgroundColor: color });
+  };
   
   return {
-    renderAsCanvas,
+    // Propiedades
+    renderAsCanvas: false, // Forzar siempre false para UI
     throttleMs,
     backgroundColor,
+    
+    // Métodos
     toggleRenderer,
-    setThrottleMs
+    setRenderAsCanvas,
+    setRendererMode,
+    setThrottleMs,
+    setBackgroundColor
   };
 };
 

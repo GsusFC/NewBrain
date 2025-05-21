@@ -24,10 +24,10 @@ export function ClientOnly({ children, fallback = null }: {
   }, []);
   
   if (!hasMounted) {
-    return <>{fallback}</>;
+    return <div className="client-only-fallback">{fallback}</div>;
   }
   
-  return <>{children}</>;
+  return <div className="client-only-content">{children}</div>;
 }
 
 /**

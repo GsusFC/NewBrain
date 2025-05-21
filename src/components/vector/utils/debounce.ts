@@ -7,12 +7,14 @@
  * @param wait - Tiempo de espera en ms
  * @returns Función con debounce aplicado
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
 ): T & { cancel: () => void } {
   let timeout: ReturnType<typeof setTimeout> | null = null;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const debounced = function(this: any, ...args: Parameters<T>): void {
     const later = () => {
       timeout = null;

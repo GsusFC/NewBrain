@@ -1,0 +1,23 @@
+{
+    "amp.commands.allowlist": [
+        "npm install fast-deep-equal",
+        "mv \"/Users/gsus/CascadeProjects/VectorGrid Brain V2/src/components/vector/controls/grid/GridControlSelector.fixed.tsx\" \"/Users/gsus/CascadeProjects/VectorGrid Brain V2/src/components/vector/controls/grid/GridControlSelector.tsx\"",
+        "mv '/Users/gsus/CascadeProjects/VectorGrid Brain V2/src/components/vector/controls/grid/GridControlSelector.fixed.tsx' '/Users/gsus/CascadeProjects/VectorGrid Brain V2/src/components/vector/controls/grid/GridControlSelector.tsx'",
+        "sed -i '' 's/!activeCustomRatio || activeCustomRatio\\.width|| activeCustomRatio\\.height <= 0/activeCustomRatio\\.width <= 0 || activeCustomRatio\\.height <= 0/g' '/Users/gsus/CascadeProjects/VectorGrid Brain V2/src/components/vector/controls/grid/GridControlSelector.tsx'",
+        "mv './src/components/vector/controls/RightControlPanelWithStore.fixed.tsx' './src/components/vector/controls/RightControlPanelWithStore.tsx'",
+        "sort",
+        "rm src/app/page.tsx.bak src/components/ui/theme-toggle.backup.tsx src/components/vector/renderers/VectorCanvasRenderer.tsx.bak src/components/vector/renderers/VectorCanvasRenderer.tsx.backup src/components/vector/controls/RightControlPanelWithStore.tsx.bak src/components/vector/controls/RightControlPanel.tsx.backup src/components/vector/controls/LeftControlPanel.tsx.backup",
+        "rm src/components/vector/core/useVectorAnimation.ts src/components/vector/hooks/useVectorAnimation.ts src/components/vector/core/useVectorGrid.ts",
+        "rm src/components/vector/renderers/VectorCanvasRenderer.tsx",
+        "rm src/app/test-hooks/page.tsx src/app/test-improved/page.tsx src/app/test-vectors/page.tsx src/app/test-zustand/page.tsx",
+        "rm src/hooks/vector/useGridContainer.ts",
+        "rm src/components/vector/store/vectorGridStore.ts src/components/vector/store/hooks.ts",
+        "rm src/components/vector/VectorPlayground.tsx",
+        "rm src/components/vector/controls/VectorControlContext.tsx",
+        "rm src/components/vector/controls/RightControlPanel.tsx src/components/vector/controls/LeftControlPanel.tsx",
+        "xargs grep -l 'import.*from.*vectorGridStore'",
+        "rm -rf node_modules/.cache",
+        "npm cache clean --force",
+        "rm src/components/vector/controls/PanelDeControlDerecho.tsx src/components/vector/controls/PanelDeControlPanel.tsx src/components/vector/controls/RightControlPanelSimple.tsx src/components/vector/controls/RightCustomControlPanel.tsx"
+    ]
+}

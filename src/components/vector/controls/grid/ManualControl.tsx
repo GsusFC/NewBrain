@@ -19,22 +19,22 @@ export const ManualControl: React.FC<ManualControlProps> = ({
     <div className="space-y-6">
       <SliderWithLabel
         label="Filas"
-        value={[initialSettings.rows || 1]}
+        value={[initialSettings.rows || 0]} // Default to 0 if undefined
         onValueChange={(values) => onChange({ ...initialSettings, rows: values[0] })}
-        min={1}
+        min={0}
         max={50}
         step={1}
-        formatValue={(val) => val.toString()}
+        formatValue={(val) => val === 0 ? 'Auto' : val.toString()}
       />
 
       <SliderWithLabel
         label="Columnas"
-        value={[initialSettings.cols || 1]}
+        value={[initialSettings.cols || 0]} // Default to 0 if undefined
         onValueChange={(values) => onChange({ ...initialSettings, cols: values[0] })}
-        min={1}
+        min={0}
         max={50}
         step={1}
-        formatValue={(val) => val.toString()}
+        formatValue={(val) => val === 0 ? 'Auto' : val.toString()}
       />
 
       <SliderWithLabel

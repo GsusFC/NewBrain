@@ -18,17 +18,17 @@ interface MousePosition {
 // Valores iniciales
 const INITIAL_STATE: VectorGridProps & { mousePosition: MousePosition } = {
   gridSettings: {
-    rows: 12,
-    cols: 18,
-    spacing: 0.5,
-    margin: 10,
+    rows: 10,
+    cols: 15,
+    spacing: 18,
+    margin: 20,
   },
   vectorSettings: {
-    vectorLength: 10,
-    vectorWidth: 1.5,
+    vectorLength: 30,
+    vectorWidth: 2.5,
     vectorColor: '#3498db',
     strokeLinecap: 'round',
-    vectorShape: 'line',
+    vectorShape: 'arrow',
     rotationOrigin: 'center',
   },
   animationType: 'smoothWaves',
@@ -57,6 +57,14 @@ interface VectorGridStore extends VectorGridProps {
   // Propiedades adicionales (no presentes en VectorGridProps)
   mousePosition: MousePosition;
   
+  // Grid Dimensions (nuevo)
+  gridDimensions: {
+    effectiveWidth: number;
+    effectiveHeight: number;
+    offsetX: number;
+    offsetY: number;
+  };
+  
   // Métodos para actualizar Grid Settings
   setGridSettings: (settings: Partial<GridSettings>) => void;
   
@@ -69,6 +77,7 @@ interface VectorGridStore extends VectorGridProps {
   // Métodos para actualizar Animation Settings
   setAnimationType: (type: AnimationType) => void;
   setAnimationProps: (props: Partial<AnimationProps>) => void;
+  updateAnimationProps: (props: Partial<AnimationProps>) => void; // Alias para setAnimationProps
   setEasingFactor: (factor: number) => void;
   setTimeScale: (scale: number) => void;
   setDynamicLengthEnabled: (enabled: boolean) => void;
@@ -78,8 +87,13 @@ interface VectorGridStore extends VectorGridProps {
   
   // Métodos para actualizar Render Settings
   toggleRenderer: () => void;
+  setRenderAsCanvas: (value: boolean) => void;
+  setRendererMode: (renderer: 'svg' | 'canvas') => void;
   setThrottleMs: (ms: number) => void;
   setBackgroundColor: (color: string) => void;
+  
+  // Métodos para actualizar Grid Dimensions
+  updateGridDimensions: (dimensions: { effectiveWidth: number; effectiveHeight: number; offsetX: number; offsetY: number }) => void;
   
   // Métodos para actualizar Mouse Position
   setMousePosition: (position: MousePosition) => void;
@@ -97,10 +111,21 @@ interface VectorGridStore extends VectorGridProps {
   getExportableState: () => VectorGridProps;
 }
 
+// Dimensiones iniciales del grid
+const initialGridDimensions = {
+  effectiveWidth: 0,
+  effectiveHeight: 0,
+  offsetX: 0,
+  offsetY: 0
+};
+
 // Crear el store con Zustand
 export const useVectorGridStore = create<VectorGridStore>((set, get) => ({
   // Estado inicial
   ...INITIAL_STATE,
+  
+  // Agregar dimensiones del grid
+  gridDimensions: initialGridDimensions,
   
   // Métodos para actualizar Grid Settings
   setGridSettings: (settings) => set((state) => ({
@@ -134,6 +159,11 @@ export const useVectorGridStore = create<VectorGridStore>((set, get) => ({
     animationProps: { ...state.animationProps, ...props }
   })),
   
+  // Alias para setAnimationProps para compatibilidad
+  updateAnimationProps: (props) => set((state) => ({
+    animationProps: { ...state.animationProps, ...props }
+  })),
+  
   setEasingFactor: (factor) => set({ easingFactor: factor }),
   
   setTimeScale: (scale) => set({ timeScale: scale }),
@@ -147,11 +177,41 @@ export const useVectorGridStore = create<VectorGridStore>((set, get) => ({
   togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
   
   // Métodos para actualizar Render Settings
-  toggleRenderer: () => set((state) => ({ renderAsCanvas: !state.renderAsCanvas })),
+  toggleRenderer: () => {
+    // Advertencia cuando se intenta cambiar a Canvas
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('El renderizador Canvas ha sido desactivado. Solo se permite el uso de SVG.');
+    }
+    // Siempre establece renderAsCanvas a false, ignorando el estado actual
+    set({ renderAsCanvas: false });
+  },
+  
+  // Actualizar el renderizador (ignorar = siempre SVG)
+  setRendererMode: (renderer: 'svg' | 'canvas') => {
+    if (renderer === 'canvas' && process.env.NODE_ENV !== 'production') {
+      console.warn('El renderizador Canvas ha sido desactivado. Solo se permite el uso de SVG.');
+    }
+    // Siempre establece renderAsCanvas a false, ignorando el valor intentado
+    set({ renderAsCanvas: false });
+  },
   
   setThrottleMs: (ms) => set({ throttleMs: ms }),
   
+  setRenderAsCanvas: (value: boolean) => {
+    // Si se intenta cambiar a true, mostrar advertencia
+    if (value === true && process.env.NODE_ENV !== 'production') {
+      console.warn('El renderizador Canvas ha sido desactivado. No se puede cambiar a modo Canvas.');
+    }
+    // Siempre establecer a false, ignorando el valor intentado
+    set({ renderAsCanvas: false });
+  },
+  
   setBackgroundColor: (color) => set({ backgroundColor: color }),
+  
+  // Método para actualizar Grid Dimensions
+  updateGridDimensions: (dimensions) => set({
+    gridDimensions: dimensions
+  }),
   
   // Método para actualizar Mouse Position
   setMousePosition: (position) => set({ mousePosition: position }),
@@ -162,25 +222,46 @@ export const useVectorGridStore = create<VectorGridStore>((set, get) => ({
   updateAnimationSettings: (settings) => set(settings),
   
   triggerPulse: () => {
-    console.log('Pulse triggered via store');
+    // console.log('Pulse triggered via store'); // Comentado para evitar lint warning
     // Esta función sería un puente hacia la implementación real de pulso
   },
   
   resetToDefaults: () => set(INITIAL_STATE),
   
-  getExportableState: () => {
+  getExportableState: (): VectorGridProps => {
     const state = get();
-    const exportable: VectorGridProps = {};
+    // Desestructurar para omitir funciones y mousePosition, el resto es el estado exportable.
+    const {
+      // Funciones de acción (setters, toggles, etc.) - prefijadas con _ para indicar que no se usan directamente aquí
+      setGridSettings: _setGridSettings,
+      setVectorSettings: _setVectorSettings,
+      setAspectRatio: _setAspectRatio,
+      setAnimationType: _setAnimationType,
+      setAnimationProps: _setAnimationProps,
+      setEasingFactor: _setEasingFactor,
+      setTimeScale: _setTimeScale,
+      setDynamicLengthEnabled: _setDynamicLengthEnabled,
+      setDynamicWidthEnabled: _setDynamicWidthEnabled,
+      setDynamicIntensity: _setDynamicIntensity,
+      togglePause: _togglePause,
+      toggleRenderer: _toggleRenderer,
+      setRenderAsCanvas: _setRenderAsCanvas,
+      setRendererMode: _setRendererMode,
+      setThrottleMs: _setThrottleMs,
+      setBackgroundColor: _setBackgroundColor,
+      setMousePosition: _setMousePosition,
+      updateProps: _updateProps,
+      updateAnimationSettings: _updateAnimationSettings,
+      triggerPulse: _triggerPulse,
+      resetToDefaults: _resetToDefaults,
+      getExportableState: _getExportableState, // la propia función
+      // Propiedades no exportables
+      mousePosition: _mousePosition,
+      // El resto de las propiedades (VectorGridProps)
+      ...exportableState
+    } = state;
     
-    // Filtramos solo las propiedades que son parte de VectorGridProps
-    Object.keys(state).forEach(key => {
-      const typedKey = key as keyof VectorGridStore;
-      if (typeof state[typedKey] !== 'function' && typedKey !== 'mousePosition') {
-        (exportable as any)[typedKey] = state[typedKey];
-      }
-    });
-    
-    return exportable;
+    return exportableState;
   },
 }));
 

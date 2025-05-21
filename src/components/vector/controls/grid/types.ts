@@ -1,13 +1,30 @@
+export interface VectorStyle {
+  shape?: 'line' | 'arrow' | 'dot' | 'triangle' | 'semicircle' | 'curve' | 'custom-svg';
+  length?: number | string; // Puede ser en px o %
+  thickness?: number; // en px
+  opacity?: number; // 0-100
+}
+
+export interface ColorSettings {
+  baseColor?: string;
+  useGradient?: boolean;
+  gradientStart?: string;
+  gradientEnd?: string;
+  gradientAngle?: number; // 0-360
+  opacity?: number; // 0-100
+}
+
 export interface GridSettings {
   rows?: number;
   cols?: number;
   margin?: number;
   spacing?: number;
-  /**
-   * La densidad controla el número base de filas cuando se usa
-   * en conjunto con un aspect ratio específico
-   */
-  density?: number;
+  aspectRatio?: '16:9' | '1:1' | '2:1' | 'custom' | 'auto';
+  customAspectRatio?: { width: number; height: number };
+  vectorsPerFlock?: number;
+  vectorSize?: number; // Tamaño del vector en píxeles
+  vectorStyle?: VectorStyle;
+  colorSettings?: ColorSettings;
   /**
    * Indica si los valores fueron establecidos manualmente
    * y no deben ser sobrescritos por recálculos automáticos
@@ -32,18 +49,14 @@ export interface CalculatorOptions {
   padding?: number;
   /** Aspect ratio seleccionado */
   aspectRatio?: AspectRatioOption;
-  /** Densidad base (número aproximado de filas) */
-  density?: number;
   /** Filas base para el cálculo */
   baseRows?: number;
-  /** Densidad objetivo para el grid */
-  targetDensity?: number;
   /** Flag para indicar cálculo exacto vs ajustado */
   exact?: boolean;
 }
 
 // Modos de gestión del grid
-export type GridManagementMode = 'autoAdjust' | 'userDefined' | 'densityBased';
+export type GridManagementMode = 'autoAdjust' | 'userDefined';
 
 // Configuración expandida para el grid
 export interface GridConfig extends GridSettings {
@@ -66,16 +79,10 @@ export interface GridControlProps {
   initialCustomRatio?: CustomAspectRatio;
   backgroundColor?: string;
   
-  // Nueva propiedad para densidad
-  initialDensity?: number;
-  
-  // Nuevas propiedades para modo de gestión
+  // Propiedades para modo de gestión
   gridManagementMode?: GridManagementMode;
   onModeChange?: (mode: GridManagementMode) => void;
   
   // Callback opcional para notificar cambios en aspectRatio (si aplica)
   onAspectRatioChange?: (ratio: AspectRatioOption, customRatio?: CustomAspectRatio) => void;
-  
-  // Callback opcional para notificar cambios en densidad
-  onDensityChange?: (density: number) => void;
 }

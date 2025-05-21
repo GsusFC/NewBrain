@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, useRef, MutableRefObject } from 'react';
+import { useLayoutEffect, useState, useRef } from 'react';
 import { AspectRatioOption } from '@/components/vector/core/types';
 
 // Definimos la interfaz de opciones
@@ -161,6 +161,7 @@ export function useGridDimensions({
         
         // Debug opcional
         if (debug) {
+          // eslint-disable-next-line no-console
           console.log('[useGridDimensions]', {
             container: { width: rect.width, height: rect.height },
             calculated: calculatedDimensions
@@ -218,7 +219,7 @@ export function useGridDimensions({
       setDimensions(calculatedDimensions);
       prevDimensionsRef.current = calculatedDimensions;
     }
-  }, [aspectRatio, margin, customAspectRatio]);
+  }, [aspectRatio, margin, customAspectRatio, containerRef]);
   
   return dimensions;
 }

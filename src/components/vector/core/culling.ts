@@ -25,6 +25,10 @@ export interface CullingOptions {
   lodThresholdFactor?: number;
   /** Factor mínimo de LOD (0-1) */
   minLodFactor?: number;
+  /** Habilita/deshabilita el nivel de detalle */
+  enableLOD?: boolean;
+  /** Usa un quadtree para optimización espacial */
+  useQuadtree?: boolean;
 }
 
 /**
@@ -144,7 +148,7 @@ export const getOptimizedVisibleVectors = (
   
   // Por ahora, aplicamos el filtro básico, pero esto puede extenderse
   // con una implementación completa de quadtree  // 1. Filtrar vectores visibles
-  let visibleVectors = filterVisibleVectors(
+  const visibleVectors = filterVisibleVectors(
     vectors,
     viewportWidth,
     viewportHeight

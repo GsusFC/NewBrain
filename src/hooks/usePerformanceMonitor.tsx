@@ -1,5 +1,15 @@
 import { useEffect, useRef } from 'react';
 
+declare global {
+  interface Performance {
+    memory?: {
+      jsHeapSizeLimit: number;
+      totalJSHeapSize: number;
+      usedJSHeapSize: number;
+    };
+  }
+}
+
 /**
  * Hook para monitorear el rendimiento de un componente
  * Muestra FPS, uso de memoria y cuenta de renderizado
@@ -43,8 +53,8 @@ export const usePerformanceMonitor = () => {
 
     // Función para medir memoria
     const measureMemory = () => {
-      if (window.performance && (window.performance as any).memory) {
-        const memoryMB = Math.round((window.performance as any).memory.usedJSHeapSize / (1024 * 1024));
+      if (window.performance?.memory?.usedJSHeapSize) {
+        const memoryMB = Math.round(window.performance.memory.usedJSHeapSize / (1024 * 1024));
         
         if (!memoryElement) {
           memoryElement = document.getElementById('memory-usage');

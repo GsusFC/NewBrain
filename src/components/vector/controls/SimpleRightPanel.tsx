@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { debounce } from 'lodash';
 import { Label } from '@/components/ui/label';
-import { SliderWithInput } from '@/components/ui/slider-with-input';
+// import { SliderWithInput } from '@/components/ui/slider-with-input'; // Reemplazado por inputs nativos
 import { ButtonGroup } from '@/components/ui/button-group';
 import { useGridSettings, useVectorSettings } from '../store/improved/hooks';
 import { VectorShape } from '../core/types';
@@ -17,10 +18,10 @@ export function SimpleRightPanel() {
   const { vectorSettings, setVectorSettings } = useVectorSettings();
   
   // Estado local independiente
-  const [rows, setRows] = useState(gridSettings?.rows || 10);
-  const [cols, setCols] = useState(gridSettings?.cols || 10);
-  const [spacing, setSpacing] = useState(gridSettings?.spacing || 8);
-  const [margin, setMargin] = useState(gridSettings?.margin || 0);
+  const [rows, setRows] = useState(gridSettings?.rows ?? 10);
+  const [cols, setCols] = useState(gridSettings?.cols ?? 10);
+  const [spacing, setSpacing] = useState(gridSettings?.spacing ?? 8);
+  const [margin, setMargin] = useState(gridSettings?.margin ?? 0);
   const [vectorLength, setVectorLength] = useState(
     typeof vectorSettings?.vectorLength === 'number' ? vectorSettings.vectorLength : 30
   );
@@ -29,60 +30,98 @@ export function SimpleRightPanel() {
   );
   const [vectorShape, setVectorShape] = useState(vectorSettings?.vectorShape || 'arrow');
   
-  // Sincronizar estado local cuando cambia el estado global
+  // Sincronizar estado local cuando cambian las propiedades globales individuales de gridSettings
   useEffect(() => {
-    setRows(gridSettings?.rows || 10);
-    setCols(gridSettings?.cols || 10);
-    setSpacing(gridSettings?.spacing || 8);
-    setMargin(gridSettings?.margin || 0);
-  }, [gridSettings]);
-  
+    if (gridSettings?.rows !== undefined) setRows(gridSettings.rows);
+  }, [gridSettings?.rows]);
+
   useEffect(() => {
-    if (typeof vectorSettings?.vectorLength === 'number') {
+    if (gridSettings?.cols !== undefined) setCols(gridSettings.cols);
+  }, [gridSettings?.cols]);
+
+  useEffect(() => {
+    if (gridSettings?.spacing !== undefined) setSpacing(gridSettings.spacing);
+  }, [gridSettings?.spacing]);
+
+  useEffect(() => {
+    if (gridSettings?.margin !== undefined) setMargin(gridSettings.margin);
+  }, [gridSettings?.margin]);
+
+  // Sincronizar estado local cuando cambian las propiedades globales individuales de vectorSettings
+  useEffect(() => {
+    if (vectorSettings?.vectorLength !== undefined && typeof vectorSettings.vectorLength === 'number') {
       setVectorLength(vectorSettings.vectorLength);
     }
-    if (typeof vectorSettings?.vectorWidth === 'number') {
+  }, [vectorSettings?.vectorLength]);
+
+  useEffect(() => {
+    if (vectorSettings?.vectorWidth !== undefined && typeof vectorSettings.vectorWidth === 'number') {
       setVectorWidth(vectorSettings.vectorWidth);
     }
-    setVectorShape(vectorSettings?.vectorShape || 'arrow');
-  }, [vectorSettings]);
+  }, [vectorSettings?.vectorWidth]);
+
+  useEffect(() => {
+    if (vectorSettings?.vectorShape !== undefined) {
+      setVectorShape(vectorSettings.vectorShape);
+    } else {
+      setVectorShape('arrow'); // Asegurar un valor por defecto si es undefined
+    }
+  }, [vectorSettings?.vectorShape]);
+
+  // Funciones debounced para actualizar el store global
+  const debouncedSetGridSettings = useMemo(
+    () =>
+      debounce((newPartialSettings: Partial<NonNullable<typeof gridSettings>>) => {
+        setGridSettings(newPartialSettings);
+      }, 300),
+    [setGridSettings] // setGridSettings de Zustand es estable
+  );
+
+  const debouncedSetVectorSettings = useMemo(
+    () =>
+      debounce((newPartialSettings: Partial<NonNullable<typeof vectorSettings>>) => {
+        setVectorSettings(newPartialSettings);
+      }, 300),
+    [setVectorSettings] // setVectorSettings de Zustand es estable
+  );
 
   // Actualizar el store cuando cambian los valores locales
   const updateRows = (newRows: number) => {
-    setRows(newRows);
-    setGridSettings({ ...gridSettings, rows: newRows });
+    setRows(newRows); // Actualización local inmediata
+    debouncedSetGridSettings({ rows: newRows }); // Actualización global debounced
   };
   
   const updateCols = (newCols: number) => {
     setCols(newCols);
-    setGridSettings({ ...gridSettings, cols: newCols });
+    debouncedSetGridSettings({ cols: newCols });
   };
   
   const updateSpacing = (newSpacing: number) => {
     setSpacing(newSpacing);
-    setGridSettings({ ...gridSettings, spacing: newSpacing });
+    debouncedSetGridSettings({ spacing: newSpacing });
   };
   
   const updateMargin = (newMargin: number) => {
     setMargin(newMargin);
-    setGridSettings({ ...gridSettings, margin: newMargin });
+    debouncedSetGridSettings({ margin: newMargin });
   };
   
   const updateVectorLength = (newLength: number) => {
     setVectorLength(newLength);
-    setVectorSettings({ ...vectorSettings, vectorLength: newLength });
+    debouncedSetVectorSettings({ vectorLength: newLength });
   };
   
   const updateVectorWidth = (newWidth: number) => {
     setVectorWidth(newWidth);
-    setVectorSettings({ ...vectorSettings, vectorWidth: newWidth });
+    debouncedSetVectorSettings({ vectorWidth: newWidth });
   };
   
   const updateVectorShape = (newShape: string) => {
-    // TypeScript quiere asegurarse de que el valor es uno válido de VectorShape
     const typedShape = newShape as VectorShape;
     setVectorShape(typedShape);
-    setVectorSettings({ ...vectorSettings, vectorShape: typedShape });
+    debouncedSetVectorSettings({ vectorShape: typedShape }); 
+    // O si se prefiere actualización inmediata para este control específico:
+    // setVectorSettings((prevSettings) => ({ ...prevSettings, vectorShape: typedShape }));
   };
   
   return (
@@ -98,47 +137,115 @@ export function SimpleRightPanel() {
           
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Filas: {rows}</Label>
-              <SliderWithInput
-                value={[rows]}
-                onValueChange={([value]) => updateRows(value)}
-                min={1}
-                max={50}
-                step={1}
-              />
+              <Label htmlFor="rows-input">Filas: {rows}</Label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  id="rows-slider"
+                  value={rows}
+                  onChange={(e) => updateRows(parseInt(e.target.value, 10))}
+                  min={1}
+                  max={50}
+                  step={1}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  aria-label="Ajustar filas con slider"
+                />
+                <input
+                  type="number"
+                  id="rows-input"
+                  value={rows}
+                  onChange={(e) => updateRows(parseInt(e.target.value, 10))}
+                  min={1}
+                  max={50}
+                  step={1}
+                  className="w-20 p-1 text-sm text-white bg-gray-700 border border-gray-600 rounded"
+                  aria-label="Entrada numérica para filas"
+                />
+              </div>
             </div>
             
             <div className="space-y-2">
-              <Label>Columnas: {cols}</Label>
-              <SliderWithInput
-                value={[cols]}
-                onValueChange={([value]) => updateCols(value)}
-                min={1}
-                max={50}
-                step={1}
-              />
+              <Label htmlFor="cols-input">Columnas: {cols}</Label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  id="cols-slider"
+                  value={cols}
+                  onChange={(e) => updateCols(parseInt(e.target.value, 10))}
+                  min={1}
+                  max={50}
+                  step={1}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  aria-label="Ajustar columnas con slider"
+                />
+                <input
+                  type="number"
+                  id="cols-input"
+                  value={cols}
+                  onChange={(e) => updateCols(parseInt(e.target.value, 10))}
+                  min={1}
+                  max={50}
+                  step={1}
+                  className="w-20 p-1 text-sm text-white bg-gray-700 border border-gray-600 rounded"
+                  aria-label="Entrada numérica para columnas"
+                />
+              </div>
             </div>
             
             <div className="space-y-2">
-              <Label>Espaciado: {spacing}px</Label>
-              <SliderWithInput
-                value={[spacing]}
-                onValueChange={([value]) => updateSpacing(value)}
-                min={0}
-                max={50}
-                step={1}
-              />
+              <Label htmlFor="spacing-input">Espaciado: {spacing}px</Label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  id="spacing-slider"
+                  value={spacing}
+                  onChange={(e) => updateSpacing(parseInt(e.target.value, 10))}
+                  min={0}
+                  max={50}
+                  step={1}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  aria-label="Ajustar espaciado con slider"
+                />
+                <input
+                  type="number"
+                  id="spacing-input"
+                  value={spacing}
+                  onChange={(e) => updateSpacing(parseInt(e.target.value, 10))}
+                  min={0}
+                  max={50}
+                  step={1}
+                  className="w-20 p-1 text-sm text-white bg-gray-700 border border-gray-600 rounded"
+                  aria-label="Entrada numérica para espaciado"
+                />
+              </div>
             </div>
             
             <div className="space-y-2">
-              <Label>Margen: {margin}px</Label>
-              <SliderWithInput
-                value={[margin]}
-                onValueChange={([value]) => updateMargin(value)}
-                min={0}
-                max={100}
-                step={1}
-              />
+              <Label htmlFor="margin-input">Margen: {margin}px</Label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  id="margin-slider"
+                  value={margin}
+                  onChange={(e) => updateMargin(parseInt(e.target.value, 10))}
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  aria-label="Ajustar margen con slider"
+                />
+                <input
+                  type="number"
+                  id="margin-input"
+                  value={margin}
+                  onChange={(e) => updateMargin(parseInt(e.target.value, 10))}
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="w-20 p-1 text-sm text-white bg-gray-700 border border-gray-600 rounded"
+                  aria-label="Entrada numérica para margen"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -163,26 +270,59 @@ export function SimpleRightPanel() {
             </div>
             
             <div className="space-y-2">
-              <Label>Longitud: {vectorLength}px</Label>
-              <SliderWithInput
-                value={[vectorLength]}
-                onValueChange={([value]) => updateVectorLength(value)}
-                min={1}
-                max={600}
-                step={1}
-              />
+              <Label htmlFor="vectorLength-input">Longitud: {vectorLength}px</Label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  id="vectorLength-slider"
+                  value={vectorLength}
+                  onChange={(e) => updateVectorLength(parseInt(e.target.value, 10))}
+                  min={1}
+                  max={600}
+                  step={1}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  aria-label="Ajustar longitud del vector con slider"
+                />
+                <input
+                  type="number"
+                  id="vectorLength-input"
+                  value={vectorLength}
+                  onChange={(e) => updateVectorLength(parseInt(e.target.value, 10))}
+                  min={1}
+                  max={600}
+                  step={1}
+                  className="w-20 p-1 text-sm text-white bg-gray-700 border border-gray-600 rounded"
+                  aria-label="Entrada numérica para longitud del vector"
+                />
+              </div>
             </div>
             
             <div className="space-y-2">
-              <Label>Ancho: {vectorWidth}px</Label>
-              <SliderWithInput
-                value={[vectorWidth]}
-                onValueChange={([value]) => updateVectorWidth(value)}
-                min={0.5}
-                max={20}
-                step={0.5}
-                precision={1}
-              />
+              <Label htmlFor="vectorWidth-input">Ancho: {vectorWidth}px</Label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  id="vectorWidth-slider"
+                  value={vectorWidth}
+                  onChange={(e) => updateVectorWidth(parseFloat(e.target.value))}
+                  min={0.5}
+                  max={20}
+                  step={0.5}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  aria-label="Ajustar ancho del vector con slider"
+                />
+                <input
+                  type="number"
+                  id="vectorWidth-input"
+                  value={vectorWidth}
+                  onChange={(e) => updateVectorWidth(parseFloat(e.target.value))}
+                  min={0.5}
+                  max={20}
+                  step={0.5}
+                  className="w-20 p-1 text-sm text-white bg-gray-700 border border-gray-600 rounded"
+                  aria-label="Entrada numérica para ancho del vector"
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -8,7 +8,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { useVectorGridStore } from '../store/vectorGridStore';
+import { useVectorGridStore } from '../store/improved/vectorGridStore';
 import type { VectorGridRef } from '../core/types';
 
 /**

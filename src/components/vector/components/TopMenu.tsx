@@ -12,22 +12,28 @@ interface TopMenuProps {
 }
 
 export const TopMenu: React.FC<TopMenuProps> = ({ effectiveWidth }) => {
+  // Usar setRenderAsCanvas para intentar cambiar (aunque ignorará cualquier intentos de cambiar a true)
   const { renderAsCanvas, setRenderAsCanvas, throttleMs } = useRenderSettings();
   const { isPaused, togglePause } = useAnimationSettings();
 
   return (
     <div 
-      className="flex justify-between items-center w-full p-2 bg-black/50 rounded-md mb-2"
+      className="flex justify-between items-center w-full p-2 bg-muted/90 rounded-md mb-2"
       style={{ maxWidth: effectiveWidth }}
     >
       <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 relative group">
           <Switch 
-            checked={renderAsCanvas} 
-            onCheckedChange={setRenderAsCanvas} 
+            checked={false} 
+            onChange={() => {}} 
             id="canvas-mode"
+            disabled={true}
+            aria-disabled="true"
           />
-          <Label htmlFor="canvas-mode">Modo Canvas</Label>
+          <Label htmlFor="canvas-mode" className="text-xs font-medium line-through opacity-50">Modo Canvas</Label>
+          <div className="absolute -top-8 left-0 bg-muted/95 text-primary-foreground text-xs p-1 rounded hidden group-hover:block z-10 w-48">
+            Solo SVG disponible. El renderizador Canvas ha sido desactivado.
+          </div>
         </div>
 
         <div>

@@ -31,15 +31,22 @@ export const formatSvgPoint = (x: number, y: number, decimals = 5): string => {
  * @returns Objeto con valores de precisión fija
  */
 export const fixTransformPrecision = (
-  transform: { x?: number; y?: number; angle?: number; [key: string]: any },
+  transform: { x?: number; y?: number; angle?: number; [key: string]: unknown },
   decimals = 5
-): Record<string, any> => {
-  const result: Record<string, any> = { ...transform };
+): Record<string, unknown> => {
+  const result: Record<string, unknown> = { ...transform };
   
   // Ajustar precisión para propiedades numéricas
   Object.keys(transform).forEach(key => {
     if (typeof transform[key] === 'number') {
-      result[key] = fixPrecision(transform[key], decimals);
+      result[key] = fixPrecision(transform[key] as number, decimals);
+    } else {
+      // Mantener el valor original si no es un número y es una clave definida
+      // Esto asegura que las propiedades no numéricas se transfieran correctamente
+      // y que el tipo 'unknown' se maneje explícitamente si es necesario fuera de esta función.
+      if (transform[key] !== undefined) { // Asegurarse de que la propiedad existe
+        result[key] = transform[key];
+      }
     }
   });
   

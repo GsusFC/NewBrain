@@ -76,10 +76,13 @@ const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
         return child;
       }
 
-      const itemValue = child.props.value || "";
+      // Type assertion to correctly type child.props
+      const typedChild = child as React.ReactElement<AccordionItemProps>;
+
+      const itemValue = typedChild.props.value; // 'value' is string in AccordionItemProps
       const isOpen = isItemOpen(itemValue);
 
-      return React.cloneElement(child, {
+      return React.cloneElement(typedChild, {
         open: isOpen,
         onOpenChange: (open: boolean) => handleValueChange(itemValue, open),
       });
@@ -94,44 +97,50 @@ const Accordion = React.forwardRef<HTMLDivElement, AccordionProps>(
 );
 Accordion.displayName = "Accordion";
 
-interface AccordionItemProps extends React.HTMLAttributes<HTMLDivElement> {
+interface AccordionItemProps {
   value: string
   open?: boolean
-  onOpenChange?: (open: boolean) => void
+  onOpenChange?: (open: boolean) => void;
+  className?: string;
+  children?: React.ReactNode;
 }
 
 /**
  * Componente individual del Accordion
  */
 const AccordionItem = React.forwardRef<HTMLDivElement, AccordionItemProps>(
-  ({ className, open, onOpenChange, value, children, ...props }, ref) => {
+  ({ className, open: isOpenProp, onOpenChange, value: _value, children }, ref) => {
+    const itemKey = `${String(_value)}-${isOpenProp ? 'open' : 'closed'}`;
+
     return (
-      <Disclosure
+      <div ref={ref}>
+        <Disclosure
+        key={itemKey} // Force re-render with new defaultOpen state
+        defaultOpen={isOpenProp} // Control via defaultOpen
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onChange={onOpenChange as any} // Propagate changes up to the parent
         as="div"
-        ref={ref}
-        open={open}
-        onChange={onOpenChange}
         className={cn("border-b", className)}
-        {...props}
       >
-        {({ open }) => (
-          <React.Fragment>
+        {({ open: internalOpen }) => ( // internalOpen is the actual state from HeadlessUI Disclosure
+          <div className="accordion-item-content">
             {React.Children.map(children, (child) => {
-              if (!React.isValidElement(child)) return null;
-              
+              if (!React.isValidElement(child)) {
+                return child;
+              }
+              // Pass the Disclosure's actual current open state to children
               if (child.type === AccordionTrigger) {
-                return React.cloneElement(child, { open });
+                return React.cloneElement(child as React.ReactElement<AccordionTriggerProps>, { open: internalOpen });
               }
-              
               if (child.type === AccordionContent) {
-                return React.cloneElement(child, { open });
+                return React.cloneElement(child as React.ReactElement<AccordionContentProps>, { open: internalOpen });
               }
-              
               return child;
             })}
-          </React.Fragment>
+          </div>
         )}
       </Disclosure>
+      </div>
     );
   }
 );

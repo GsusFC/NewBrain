@@ -118,6 +118,17 @@
     all: revert;
   }
   
+  /* Estilos específicos para los paneles laterales */
+  [data-component-name="LeftControlPanel"],
+  [data-component-name="LeftControlPanel"] > div,
+  [data-component-name="RightControlPanel"],
+  [data-component-name="RightControlPanel"] .h-full,
+  [data-component-name="RightControlPanel"] .w-full,
+  [data-component-name="RightControlPanel"] [data-radix-scroll-area-viewport],
+  [data-component-name="RightControlPanel"] > div {
+    background-color: hsl(var(--background)) !important;
+  }
+  
   /* Estilos para inputs que respetan el tema */
   input, select, textarea {
     color: var(--foreground);

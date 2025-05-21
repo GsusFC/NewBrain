@@ -5,7 +5,7 @@
 
 import dynamic from 'next/dynamic';
 import type { ComponentType, ReactNode } from 'react';
-import type { DynamicOptions, Loader, LoaderMap, LoadableGeneratedOptions } from 'next/dynamic';
+import type { DynamicOptions } from 'next/dynamic';
 
 /**
  * Crea una importación dinámica con SSR deshabilitado

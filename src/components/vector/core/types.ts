@@ -1,7 +1,17 @@
 import React from 'react'; // Necesario para React.RefObject y React.ReactNode
-import type { AnimationType as ImportedAnimationType } from './animations/animationTypes'; // Importar AnimationType
 
-export type AnimationType = ImportedAnimationType; // Re-exportar AnimationType
+export type AnimationType = 
+  | 'none'
+  | 'smoothWaves'
+  | 'seaWaves'
+  | 'mouseInteraction'
+  | 'directionalFlow'
+  | 'flocking'
+  | 'vortex'
+  | 'lissajous'
+  | 'perlinFlow'
+  | 'randomLoop'
+  | 'centerPulse'; // Define directly to avoid circular dependencies
 
 // --- Tipos Reutilizables ---
 
@@ -21,7 +31,7 @@ export type StrokeLinecap = 'butt' | 'round' | 'square';
 export type RotationOrigin = 'start' | 'center' | 'end';
 
 // Define los modos de operación del gestor de aspecto
-export type Mode = 'aspect-fixed' | 'density' | 'manual';
+export type Mode = 'aspect-fixed' | 'manual';
 
 // Define las opciones de relación de aspecto soportadas
 export type AspectRatioOption =
@@ -57,43 +67,44 @@ export interface GradientConfig { // `export`
 
 // Estructura de Datos del Vector (Estado Animado)
 export interface AnimatedVectorItem {
-  // Identificación y posición en la cuadrícula
+  // Identificación y posición
   id: string;
-  r: number; // Fila en la cuadrícula
-  c: number; // Columna en la cuadrícula
+  r: number; // Fila
+  c: number; // Columna
   
   // Posiciones
-  baseX: number;      // Posición X base (sin animación)
-  baseY: number;      // Posición Y base (sin animación)
-  originalX: number;  // Posición X original en el grid
-  originalY: number;  // Posición Y original en el grid
-  x: number;          // Posición X actual (puede ser animada)
-  y: number;          // Posición Y actual (puede ser animada)
+  baseX: number;
+  baseY: number;
+  originalX: number;
+  originalY: number;
+  x: number;
+  y: number;
   
   // Ángulos
-  initialAngle: number;   // Ángulo inicial (sin animación)
-  currentAngle: number;   // Ángulo actual (puede ser animado)
-  angle: number;          // Ángulo para compatibilidad con animaciones existentes
-  previousAngle?: number; // Ángulo anterior para interpolación
-  targetAngle?: number;   // Ángulo objetivo para animaciones
+  angle: number;
+  originalAngle: number;
+  initialAngle?: number; // Para retrocompatibilidad
+  currentAngle?: number; // Para retrocompatibilidad
+  previousAngle?: number; // Para interpolación
+  targetAngle?: number; // Para animaciones
   
-  // Factores de transformación
-  lengthFactor: number;   // Factor de longitud (0-1)
-  widthFactor: number;    // Factor de ancho (0-1)
-  intensityFactor?: number; // Factor de intensidad para efectos
+  // Factores
+  lengthFactor: number;
+  widthFactor: number;
+  intensityFactor?: number;
   
   // Longitudes
-  length: number;         // Longitud actual del vector
-  originalLength: number; // Longitud original del vector
+  length: number;
+  originalLength: number;
   
   // Colores
-  color: string;          // Color actual (puede ser animado)
-  originalColor: string;  // Color original
+  color: string | GradientConfig;
+  originalColor: string | GradientConfig;
   
   // Estado y metadatos
-  animationState?: Record<string, unknown>; // Estado específico de la animación
-  flockId?: number;       // Identificador para comportamiento de bandada
-  customData?: unknown;   // Datos personalizados
+  animationState?: Record<string, unknown>;
+  flockId?: number;
+  customData?: unknown;
 }
 
 // Define el tipo complejo para el color del vector
@@ -191,6 +202,9 @@ export interface VectorGridProps { // `export`
   dynamicIntensity?: number;
 
   // 5. Rendimiento y Tecnología de Renderizado
+  /**
+   * @deprecated Esta propiedad ya no tiene efecto. Siempre se usa SVG.
+   */
   renderAsCanvas?: boolean;
   throttleMs?: number;
 
@@ -241,6 +255,15 @@ export interface AnimationSettings {
   dynamicWidthEnabled?: boolean; // Opcional, por defecto false
   dynamicIntensity?: number; // Opcional, por defecto 1
   throttleMs?: number; // Opcional, por defecto un valor razonable (e.g., 16ms)
+}
+
+export interface VectorAnimationProps {
+  vectors: AnimatedVectorItem[];
+  deltaTime: number;
+  settings: AnimationSettings;
+  container: { width: number; height: number };
+  mousePosition?: { x: number; y: number } | null;
+  isPaused?: boolean;
 }
 
 export interface UseVectorAnimationProps {

@@ -23,22 +23,10 @@ module.exports = {
   overrides: [
     {
       files: ['**/*.css'],
-      extends: ['stylelint-config-standard'],
-      rules: {
-        'at-rule-no-unknown': [
-          true,
-          {
-            ignoreAtRules: [
-              'tailwind',
-              'apply',
-              'variants',
-              'responsive',
-              'screen',
-              'layer',
-            ],
-          },
-        ],
-      },
+      // Stylelint configuration should be handled separately.
+      // If you have CSS files to lint (e.g., globals.css for Tailwind setup),
+      // ensure Stylelint is configured with its own config file (e.g., .stylelintrc.js)
+      // and run via a separate npm script.
     },
   ],
   plugins: [

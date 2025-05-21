@@ -17,6 +17,10 @@ export interface SelectProps {
   children: React.ReactNode
   /** Clase personalizada */
   className?: string
+  /** Elemento a renderizar */
+  as?: React.ElementType
+  /** Otras propiedades */
+  [key: string]: any
 }
 
 /**
@@ -24,13 +28,13 @@ export interface SelectProps {
  */
 const Select = React.forwardRef<
   HTMLDivElement,
-  SelectProps
->(({ value, onChange, disabled, children, ...props }, ref) => {
+  SelectProps & { as?: React.ElementType }
+>(({ value, onChange, disabled, children, as: Component = "div", ...props }, ref) => {
   return (
     <Listbox value={value} onChange={onChange} disabled={disabled}>
-      <div ref={ref} className="relative" data-slot="select" {...props}>
+      <Component ref={ref} className="relative" data-slot="select" {...props}>
         {children}
-      </div>
+      </Component>
     </Listbox>
   )
 })
@@ -125,10 +129,10 @@ const SelectTrigger = React.forwardRef<
     {...props}
   >
     {({ value }) => (
-      <>
+      <div className="select-trigger-content flex items-center">
         {children || value}
         <ChevronDownIcon className="size-4 opacity-50 ml-2" />
-      </>
+      </div>
     )}
   </Listbox.Button>
 ))
@@ -151,7 +155,8 @@ const SelectContent = React.forwardRef<
   SelectContentProps
 >(({ className, children, position = "popper", ...props }, ref) => (
   <Transition
-    as={React.Fragment}
+    as="div"
+    className="select-content-transition"
     leave="transition ease-in duration-100"
     leaveFrom="opacity-100"
     leaveTo="opacity-0"
@@ -218,14 +223,14 @@ const SelectItem = React.forwardRef<HTMLDivElement, SelectItemProps>(({ classNam
     {...props}
   >
     {({ selected }) => (
-      <>
+      <div className="select-item-content flex w-full">
         <span className="block truncate">{children}</span>
         {selected ? (
           <span className="absolute right-2 flex size-3.5 items-center justify-center">
             <CheckIcon className="size-4" />
           </span>
         ) : null}
-      </>
+      </div>
     )}
   </Listbox.Option>
 ))

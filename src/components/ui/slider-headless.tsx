@@ -41,6 +41,17 @@ const SliderComponent = React.forwardRef<HTMLDivElement, SliderProps>(
     const trackRef = React.useRef<HTMLDivElement>(null)
     const thumbRefs = React.useRef<(HTMLDivElement | null)[]>([])
     
+    // Función para manejar referencias múltiples
+    const setRefs = React.useCallback((node: HTMLDivElement | null) => {
+      if (ref) {
+        if (typeof ref === 'function') {
+          ref(node);
+        } else if (ref.current !== undefined) {
+          (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+        }
+      }
+    }, [ref])
+    
     // Estado interno controlado para prevenir bucles de actualización
     const [internalValue, setInternalValue] = React.useState<number[]>(value)
     const [isDragging, setIsDragging] = React.useState<boolean>(false)
@@ -194,7 +205,7 @@ const SliderComponent = React.forwardRef<HTMLDivElement, SliderProps>(
       return (
         <div
           key={index}
-          ref={(el) => (thumbRefs.current[index] = el)}
+          ref={(el: HTMLDivElement | null) => { thumbRefs.current[index] = el }}
           className={cn(
             "absolute block h-4 w-4 rounded-md border-2 border-primary bg-primary/20 dark:bg-background shadow-md transition-colors",
             "hover:bg-primary/40 dark:hover:bg-primary/20",
@@ -251,7 +262,7 @@ const SliderComponent = React.forwardRef<HTMLDivElement, SliderProps>(
     
     return (
       <div
-        ref={ref}
+        ref={setRefs}
         className={cn(
           "relative flex touch-none select-none items-center",
           orientation === "vertical" ? "h-full flex-col" : "w-full",

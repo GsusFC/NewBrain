@@ -1,88 +1,40 @@
-'use client';
+// Mock para mantener compatibilidad con el contexto antiguo
+import React, { createContext, useContext } from 'react';
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import type { VectorShape } from '../core/types';
-
-// Interfaces para las propiedades de control de vectores
-export interface VectorControlSettings {
-  // Propiedades geométricas
-  baseLength: number;
-  baseWidth: number;
-  shape: VectorShape;
-  rotationOrigin: 'start' | 'center' | 'end';
-  
-  // Propiedades de apariencia
-  color: string;
-  strokeLinecap: 'butt' | 'round' | 'square';
-  opacity: number;
-  
-  // Propiedades de comportamiento
-  interactionEnabled: boolean;
-  cullingEnabled: boolean;
-  debugMode: boolean;
-}
-
-// Valores por defecto
-const defaultSettings: VectorControlSettings = {
-  baseLength: 40,
-  baseWidth: 2,
-  shape: 'line',
-  rotationOrigin: 'center',
-  
-  color: '#737373',
-  strokeLinecap: 'round',
-  opacity: 1,
-  
-  interactionEnabled: true,
-  cullingEnabled: true,
-  debugMode: false,
+// Contexto por defecto para compatibilidad
+const defaultContext = {
+  settings: {},
+  updateSettings: () => {},
+  resetSettings: () => {}
 };
 
-// Interfaz del contexto
-interface VectorControlContextType {
-  settings: VectorControlSettings;
-  updateSettings: (newSettings: Partial<VectorControlSettings>) => void;
-  resetSettings: () => void;
-}
-
 // Crear el contexto
-export const VectorControlContext = createContext<VectorControlContextType | undefined>(undefined);
+const VectorControlContext = createContext(defaultContext);
 
-// Hook personalizado para usar el contexto
+/**
+ * @deprecated Use los hooks de Zustand en vez de este contexto.
+ */
 export function useVectorControl() {
-  const context = useContext(VectorControlContext);
-  if (!context) {
-    throw new Error('useVectorControl debe ser usado dentro de un VectorControlProvider');
-  }
-  return context;
+  console.warn(
+    'DEPRECATED: useVectorControl ha sido reemplazado por useVectorGridStore. ' +
+    'Este es un mock para mantener compatibilidad.'
+  );
+  
+  return useContext(VectorControlContext);
 }
 
-// Proveedor del contexto
-export function VectorControlProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<VectorControlSettings>(defaultSettings);
-  
-  // Función para actualizar configuraciones parciales
-  const updateSettings = (newSettings: Partial<VectorControlSettings>) => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      ...newSettings,
-    }));
-  };
-  
-  // Función para resetear a valores por defecto
-  const resetSettings = () => {
-    setSettings(defaultSettings);
-  };
+/**
+ * @deprecated Use los componentes que utilizan el store en lugar de este provider.
+ */
+export const VectorControlProvider = ({ children }: { children: React.ReactNode }) => {
+  console.warn(
+    'DEPRECATED: VectorControlProvider ha sido reemplazado por componentes que usan useVectorGridStore. ' +
+    'Este es un mock para mantener compatibilidad.'
+  );
   
   return (
-    <VectorControlContext.Provider 
-      value={{ 
-        settings, 
-        updateSettings, 
-        resetSettings 
-      }}
-    >
+    <VectorControlContext.Provider value={defaultContext}>
       {children}
     </VectorControlContext.Provider>
   );
-}
+};

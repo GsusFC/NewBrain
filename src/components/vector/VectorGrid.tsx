@@ -103,7 +103,7 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
       // Propiedades del Grid
       gridSettings,
       vectorSettings,
-      backgroundColor = 'rgb(var(--background))',
+      backgroundColor = 'hsl(var(--background))',
       
       // Callback para métricas
       onVectorCountChange,
@@ -463,7 +463,7 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
             <p>Vectores: {animatedVectors?.length || 0} / {rawAnimatedVectors?.length || 0}</p>
             <p>Mouse: {mousePosition ? `${Math.round(mousePosition.x)},${Math.round(mousePosition.y)}` : 'fuera'}</p>
             <p>Estado: {internalIsPaused ? 'Pausado' : 'Animando'}</p>
-            <p>Renderizador: {renderAsCanvas ? 'Canvas' : 'SVG'}</p>
+            <p>Renderizador: SVG</p>
           </div>
         </div>
       );
@@ -505,7 +505,7 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
         aria-label={`Grid de vectores con ${animatedVectors?.length || 0} elementos. ${internalIsPaused ? 'Animación pausada' : 'Animación activa'}`}
         aria-live="polite"
         data-vectors-count={animatedVectors?.length || 0}
-        data-render-mode={renderAsCanvas ? 'canvas' : 'svg'}
+        data-render-mode="svg" /* Forzar modo SVG */
         data-culling={cullingEnabled ? 'enabled' : 'disabled'}
       >
         {/* Contenedor del renderizador con dimensiones exactas y transición */}
@@ -518,7 +518,7 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
             overflow: 'hidden',
             opacity: fade,
             transition: 'opacity 0.4s cubic-bezier(.4,0,.2,1)',
-            border: debugMode ? '1px solid limegreen' : 'none',
+            border: 'none',
           }}
         >
           {animatedVectors && animatedVectors.length > 0 ? (
@@ -531,23 +531,22 @@ export const VectorGrid = forwardRef<VectorGridRef, ExtendedVectorGridProps>(
               baseVectorColor={finalVectorSettings.vectorColor || DEFAULT_VECTOR_SETTINGS.vectorColor}
               baseVectorWidth={finalVectorSettings.vectorWidth || DEFAULT_VECTOR_SETTINGS.vectorWidth}
               baseStrokeLinecap={finalVectorSettings.strokeLinecap || DEFAULT_VECTOR_SETTINGS.strokeLinecap}
-              baseVectorShape={finalVectorSettings.vectorShape || DEFAULT_VECTOR_SETTINGS.vectorShape}
+              baseVectorShape={finalVectorSettings.vectorShape || DEFAULT_VECTOR_SETTINGS.vectorShape as any}
               baseRotationOrigin={finalVectorSettings.rotationOrigin || DEFAULT_VECTOR_SETTINGS.rotationOrigin}
               interactionEnabled={!internalIsPaused}
               cullingEnabled={cullingEnabled}
               debugMode={debugMode}
               // Usar renderMode según la prop renderAsCanvas
-              renderMode={renderAsCanvas ? 'canvas' : 'svg'}
+              renderMode="svg" /* Forzar renderer SVG - Canvas deshabilitado permanentemente */
             />
           ) : debugMode && (
-            <div className="flex items-center justify-center w-full h-full text-red-500 bg-black/20 text-sm">
+            <div className="flex items-center justify-center w-full h-full text-red-500 bg-muted/80 text-sm">
               No hay vectores para renderizar. Verifica la configuración de la cuadrícula o las dimensiones.
             </div>
           )}
         </div>
         
-        {/* Overlay de depuración */}
-        {debugMode && <DebugOverlay />}
+        {/* Overlay de depuración desactivado */}
       </div>
     );
   }

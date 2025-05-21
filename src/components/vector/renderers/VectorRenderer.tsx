@@ -1,102 +1,132 @@
 'use client';
 
-import { lazy, Suspense, useMemo } from 'react';
-import VectorSvgRenderer from './VectorSvgRenderer';
-import { VectorRendererProps, GradientConfig } from '../types/VectorRendererProps';
-import { FallbackVectorDisplay } from '../FallbackVectorDisplay';
-import { VectorColorValue } from '../core/types';
+// Mantenemos importaciones por compatibilidad
 
-// Carga diferida del renderizador Canvas para optimizar el tamaño del bundle inicial
-const LazyCanvasRenderer = lazy(() => 
-  import('./VectorCanvasRenderer').then(mod => ({ 
-    default: mod.VectorCanvasRenderer 
-  }))
-);
+import VectorSvgRenderer from './VectorSvgRenderer';
+import type { VectorRendererProps, RotationOrigin } from '../types/VectorRendererProps';
+import type { VectorSvgRendererProps } from './VectorSvgRenderer'; // Corrected import path
+import type { GradientConfig as CoreGradientConfig, VectorShape, AnimatedVectorItem } from '../core/types';
 
 /**
- * Componente unificado para renderizado de vectores que elige automáticamente
- * entre SVG y Canvas según la configuración o características de los datos
+ * Componente unificado para renderizado de vectores que usa exclusivamente SVG.
+ * Las referencias a Canvas se mantienen por compatibilidad pero no se utilizan.
  */
 export function VectorRenderer(props: VectorRendererProps) {
-  // Adaptador para compatibilidad con tipos existentes
-  const adaptVectorRendererProps = (props: VectorRendererProps): any => {
-    // Adaptar los tipos GradientConfig para hacerlos compatibles
-    // Añadir coords vacío si no existe
-    const adaptedProps = {...props};
-    
-    // Si baseVectorColor es un objeto GradientConfig pero le falta coords
-    if (typeof props.baseVectorColor === 'object' && 
-        props.baseVectorColor !== null && 
-        'type' in props.baseVectorColor &&
-        !('coords' in props.baseVectorColor)) {
-      
-      // Añadir coords vacío para compatibilidad
-      adaptedProps.baseVectorColor = {
-        ...props.baseVectorColor,
-        coords: {}
-      };
-    }
-    
-    return adaptedProps;
+  /**
+   * Adapta las propiedades de VectorRendererProps a las que necesita VectorSvgRenderer,
+   * especialmente manejando la configuración de `baseVectorColor`.
+   */
+  // Define a more precise type for the input of adaptVectorRendererProps
+  // This reflects that VectorRenderer component ensures width, height, vectors, and baseVectorShape are provided.
+  type AdaptInputProps = Omit<VectorRendererProps, 'renderMode' | 'baseRotationOrigin'> & {
+    width: number;
+    height: number;
+    vectors: AnimatedVectorItem[]; // Ensure vectors is non-optional for the adapter
+    baseVectorShape: VectorShape; // baseVectorShape is guaranteed by VectorRenderer
+    baseRotationOrigin: RotationOrigin;
+    debugMode?: boolean;
+    getDynamicLength?: (item: AnimatedVectorItem) => number;
+    getDynamicWidth?: (item: AnimatedVectorItem) => number;
+    useDynamicProps?: boolean;
   };
+
+  const adaptVectorRendererProps = (
+    props: AdaptInputProps
+  ): VectorSvgRendererProps => {
+    // Explicitly destructure all required props for VectorSvgRendererProps
+    // to ensure correct typing and avoid issues with spread operator generalization.
+    const {
+      vectors,
+      width,
+      height,
+      baseVectorShape,
+      baseRotationOrigin,
+      baseVectorColor,
+      baseVectorLength,
+      baseVectorWidth,
+      // Optional props with defaults or that can be undefined
+      backgroundColor,
+      baseStrokeLinecap,
+      customRenderer,
+      userSvgString,
+      userSvgPreserveAspectRatio,
+      onVectorClick,
+      onVectorHover,
+      getDynamicLength,
+      getDynamicWidth,
+      useDynamicProps,
+      interactionEnabled,
+      debugMode,
+      cullingEnabled,
+      frameInfo,
+      ...otherProps // Collect any other valid props from VectorRendererProps
+    } = props;
+
+    let adaptedBaseVectorColor = baseVectorColor;
+    if (typeof baseVectorColor === 'object' && baseVectorColor !== null && 'stops' in baseVectorColor) {
+      if (!baseVectorColor.coords) {
+        adaptedBaseVectorColor = {
+          ...baseVectorColor,
+          coords: { x1: 0, y1: 0, x2: 1, y2: 0 },
+        } as CoreGradientConfig;
+      }
+    }
+
+    return {
+      // Pass all destructured props, ensuring types are maintained
+      vectors,
+      width,
+      height,
+      baseVectorShape, // This is VectorShape
+      baseRotationOrigin, // This is 'start' | 'center' | 'end'
+      baseVectorColor: adaptedBaseVectorColor,
+      baseVectorLength,
+      baseVectorWidth,
+      backgroundColor,
+      baseStrokeLinecap,
+      customRenderer,
+      userSvgString,
+      userSvgPreserveAspectRatio,
+      onVectorClick,
+      onVectorHover,
+      getDynamicLength,
+      getDynamicWidth,
+      useDynamicProps,
+      interactionEnabled,
+      debugMode,
+      cullingEnabled,
+      frameInfo,
+      ...otherProps, // Spread any remaining valid props
+    } as VectorSvgRendererProps; // Asserting the return type for clarity
+  };
+  
   const { 
     vectors,
-    renderMode = 'svg',
+    // renderMode is no longer used directly as we always use SVG
     debugMode,
     width,
     height,
+    baseVectorShape = 'arrow' as VectorShape, // Default value ensures it's always present
+    baseRotationOrigin = 'start', // Default value ensures it's always present
     ...restProps
   } = props;
   
-  // Determinar el modo de renderizado efectivo
-  const effectiveMode = useMemo(() => {
-    if (renderMode === 'auto') {
-      // Lógica para selección automática basada en cantidad y complejidad
-      if (vectors.length > 2000) return 'canvas';
-      
-      // Comprobar si hay vectores complejos (SVG personalizado)
-      // En AnimatedVectorItem el shape puede estar en vectorShape
-      const hasComplexVectors = vectors.some(v => {
-        // Buscar si hay formas complejas según las propiedades disponibles
-        return (
-          // Si hay una propiedad shape
-          (v as any).shape === 'custom' || 
-          (v as any).shape === 'curve' ||
-          // O puede venir en vectorShape
-          (v as any).vectorShape === 'custom' || 
-          (v as any).vectorShape === 'curve'
-        );
-      });
-      
-      if (hasComplexVectors && vectors.length > 1000) return 'canvas';
-      
-      // Por defecto usar SVG para mejor calidad y facilidad de debugging
-      return 'svg';
-    }
-    return renderMode;
-  }, [renderMode, vectors]);
-  
-  // Si se necesita Canvas, cargarlo de forma diferida
-  if (effectiveMode === 'canvas') {
-    return (
-      <Suspense fallback={
-        // Fallback mientras carga el Canvas: usar SVG o mostrar spinner
-        vectors.length < 1000 ? 
-          <VectorSvgRenderer {...adaptVectorRendererProps({ vectors, width, height, ...restProps, debugMode })} /> : 
-          <FallbackVectorDisplay message="Cargando renderer de Canvas..." width={width} height={height} />
-      }>
-        <LazyCanvasRenderer {...adaptVectorRendererProps({ vectors, width, height, ...restProps, debugMode })} />
-      </Suspense>
-    );
+  // MODIFICACIÓN: Si se intenta usar Canvas, mostrar advertencia en modo debug
+  if (debugMode && props.renderMode === 'canvas') {
+    console.warn('VectorRenderer: El modo Canvas ha sido desactivado. Utilizando SVG en su lugar.');
   }
   
-  // Por defecto usar SVG (mejor para la mayoría de casos)
-  return <VectorSvgRenderer {...adaptVectorRendererProps({ vectors, width, height, ...restProps, debugMode })} />;
+  // MODIFICACIÓN: Siempre usar SVG independientemente del valor de renderMode
+  const adaptedProps = adaptVectorRendererProps({
+    ...restProps,       // Spread other props from VectorRenderer's input
+    vectors,            // Explicitly pass required/handled props for AdaptInputProps
+    width,
+    height,
+    baseVectorShape,    // This is VectorShape
+    baseRotationOrigin, // This is 'start' | 'center' | 'end'
+    debugMode,
+  });
+  return <VectorSvgRenderer {...adaptedProps} />;
 }
 
-// Función auxiliar para determinar complejidad general
-function calculateVectorComplexity(vectors: VectorRendererProps['vectors']): number {
-  // Implementación futura: algoritmo más sofisticado que tenga en cuenta
-  // longitud, grosor, tipo y otras características de los vectores
-  return vectors.length;
-}
+// calculateVectorComplexity was here, removed as it's unused.

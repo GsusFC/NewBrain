@@ -1,17 +1,12 @@
-import { ReactNode } from 'react';
-import { AnimatedVectorItem, VectorShape, StrokeLinecap, GradientConfig as CoreGradientConfig } from '../core/types';
+
+import { AnimatedVectorItem, VectorShape, StrokeLinecap, GradientConfig as CoreGradientConfig, VectorRenderProps } from '../core/types';
+import React from 'react'; // Necesario para React.JSX.Element
 
 export type RendererMode = 'svg' | 'canvas' | 'auto';
 export type RotationOrigin = 'start' | 'center' | 'end'; 
 
-// Usar el mismo tipo que en core/types.ts pero sin 'userSvg' que es específico del SVGRenderer
-export type VectorShapeType = Exclude<VectorShape, 'userSvg'> | 'custom';
-
-// Redefine el tipo de gradiente compatible con ambos renderizadores
-export interface GradientConfig extends Omit<CoreGradientConfig, 'coords'> {
-  // Mantener compatibilidad pero haciendo coords opcional
-  coords?: CoreGradientConfig['coords'];
-}
+// Se utiliza CoreGradientConfig directamente de '../core/types' donde 'coords' es requerida.
+// La lógica de adaptación en VectorRenderer.tsx maneja la compatibilidad para props entrantes.
 
 // Información de frame para animaciones
 export interface FrameInfo {
@@ -19,20 +14,6 @@ export interface FrameInfo {
   frameCount?: number;
   deltaTime?: number;
   totalFrames?: number;
-}
-
-// Metadatos del vector para renderizado
-export interface VectorRenderMetadata {
-  isHovered: boolean;
-  isSelected: boolean;
-}
-
-// Props para renderizado personalizado
-export interface CustomRenderProps {
-  item: AnimatedVectorItem;
-  length: number;
-  width: number;
-  metadata: VectorRenderMetadata;
 }
 
 // Props comunes para ambos renderizadores
@@ -48,10 +29,10 @@ export interface VectorRendererProps {
   
   // Propiedades de vector base
   baseVectorLength: number | ((item: AnimatedVectorItem) => number);
-  baseVectorColor: string | GradientConfig | ((item: AnimatedVectorItem, frameCount: number, totalFrames: number, timestamp: number) => string);
+  baseVectorColor: string | CoreGradientConfig | ((item: AnimatedVectorItem, frameCount: number, totalFrames: number, timestamp: number) => string);
   baseVectorWidth: number | ((item: AnimatedVectorItem) => number);
   baseStrokeLinecap?: StrokeLinecap;
-  baseVectorShape?: VectorShapeType;
+  baseVectorShape?: VectorShape;
   baseRotationOrigin?: RotationOrigin;
   
   // SVG personalizado
@@ -73,5 +54,5 @@ export interface VectorRendererProps {
   frameInfo?: FrameInfo;
   
   // Renderizador personalizado (opcional)
-  customRenderer?: (renderProps: CustomRenderProps, ctx?: CanvasRenderingContext2D) => void;
+  customRenderer?: (renderProps: VectorRenderProps) => React.JSX.Element;
 }

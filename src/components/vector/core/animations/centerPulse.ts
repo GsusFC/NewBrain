@@ -224,7 +224,7 @@ export const createCenterPulseManager = (): CenterPulseManager => {
     }
     
     // Calcular valores finales promediando todos los efectos según sus pesos con precisión controlada
-    let targetAngle = affectAngle
+    const targetAngle = affectAngle
       ? fixPrecision(totalAngleEffect / totalEffectWeight, 6)
       : fixPrecision(item.currentAngle || 0, 6);
       

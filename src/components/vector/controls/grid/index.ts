@@ -1,11 +1,10 @@
 // Exportar el selector principal
-export { GridControlSelector } from './GridControlSelector';
-export type { GridControlSelectorProps } from './GridControlSelector';
+export { default as GridControlSelector } from './GridControlSelector';
 
 // Exportar controles individuales
 export { AspectRatioControl } from './AspectRatioControl';
-export { DensityControl } from './DensityControl';
 export { ManualControl } from './ManualControl';
+export { GridControls } from './GridControls';
 
 // Exportar tipos
 export * from './types';

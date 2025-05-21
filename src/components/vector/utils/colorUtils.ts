@@ -73,7 +73,6 @@ export function ensureContrastColor(color: string, background = '#000000'): stri
   }
   
   // Si el contraste es insuficiente, ajustar el color
-  const colorBrightness = perceivedBrightness(colorRgb.r, colorRgb.g, colorRgb.b);
   const bgBrightness = perceivedBrightness(bgRgb.r, bgRgb.g, bgRgb.b);
   
   // Decidir si aclarar u oscurecer basado en el brillo del fondo
@@ -98,7 +97,7 @@ export function ensureContrastColor(color: string, background = '#000000'): stri
  * @param config - Configuración del gradiente
  * @returns ID único
  */
-export function getGradientId(prefix: string, config: any): string {
+export function getGradientId(prefix: string, config: Record<string, unknown>): string {
   // Crear una representación de cadena simple de la configuración
   const configStr = JSON.stringify(config);
   

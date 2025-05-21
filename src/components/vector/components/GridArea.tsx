@@ -28,7 +28,7 @@ interface GridAreaProps {
 }
 
 const ErrorFallback = ({ error }: { error: Error }) => (
-  <div className="flex items-center justify-center w-full h-full bg-black/70 text-red-500 p-4 text-sm">
+  <div className="flex items-center justify-center w-full h-full bg-muted/90 text-red-500 p-4 text-sm">
     <div>
       <h3 className="font-medium mb-2">Error al renderizar grid:</h3>
       <p className="font-mono text-xs">{error.message}</p>
@@ -75,7 +75,7 @@ export const GridArea: React.FC<GridAreaProps> = ({
 
   return (
     <div
-      className="relative h-full w-full bg-slate-900 overflow-hidden flex items-center justify-center"
+      className="relative h-full w-full overflow-hidden flex items-center justify-center"
       ref={containerRef}
       style={{ opacity: fade, transition: 'opacity 0.3s ease-in-out' }}
       onMouseMove={handleMouseMove}
@@ -93,7 +93,7 @@ export const GridArea: React.FC<GridAreaProps> = ({
           ref={vectorGridRef}
           width={effectiveWidth}
           height={effectiveHeight}
-          backgroundColor="#1a1a1a"
+          backgroundColor="hsl(var(--background))"
           onVectorClick={onVectorClick}
           gridSettings={gridSettings}
           vectorSettings={{
@@ -109,8 +109,8 @@ export const GridArea: React.FC<GridAreaProps> = ({
           dynamicWidthEnabled={dynamicWidthEnabled}
           dynamicIntensity={dynamicIntensity}
           renderAsCanvas={renderAsCanvas}
-          debugMode={process.env.NODE_ENV === 'development'}
-          cullingEnabled={true} // Habilitar culling para optimización
+          debugMode={false}
+          cullingEnabled={true}
         />
       </ErrorBoundary>
     </div>

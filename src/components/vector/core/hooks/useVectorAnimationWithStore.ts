@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { useVectorGridStore } from '../../store/vectorGridStore';
+import { useVectorGridStore } from './useVectorGridStore';
 
 // import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // <- keep commented until used
 import type {
@@ -8,7 +8,7 @@ import type {
 } from '../types';
 
 // Interfaz extendida para UIVectorItem con propiedades de estilo
-interface ExtendedUIVectorItem extends UIVectorItem {
+interface ExtendedUIVectorItem extends Omit<UIVectorItem, 'length' | 'originalLength' | 'color' | 'originalColor'> {
   length?: number;
   originalLength?: number;
   color?: string;
@@ -86,28 +86,36 @@ export const useVectorAnimationWithStore = (
   });
 
   // Estado para vectores animados - convertir del formato UI al formato del sistema modular
-  const [animatedVectors, setAnimatedVectors] = useState<ModularVectorItem[]>(() => {
-    const initialModularVectors = initialVectors.map(vector => ({
-      id: vector.id,
-      r: vector.r || 0,
-      c: vector.c || 0,
-      baseX: vector.baseX || 0,
-      baseY: vector.baseY || 0,
-      originalX: vector.originalX || vector.baseX || 0,
-      originalY: vector.originalY || vector.baseY || 0,
-      initialAngle: vector.initialAngle || 0,
-      currentAngle: vector.currentAngle || vector.initialAngle || 0,
-      lengthFactor: vector.lengthFactor || 1,
-      widthFactor: vector.widthFactor || 1,
-      intensityFactor: vector.intensityFactor || 1,
-      customData: vector.customData
-    }));
-    
-    // Inicializar también la referencia
-    animatedVectorsRef.current = initialModularVectors;
-    
-    return initialModularVectors;
-  });
+const [animatedVectors, setAnimatedVectors] = useState<ModularVectorItem[]>(() => {
+  const initialModularVectors = initialVectors.map(vector => ({
+  id: vector.id,
+  r: vector.r || 0,
+  c: vector.c || 0,
+  baseX: vector.baseX || 0,
+  baseY: vector.baseY || 0,
+  originalX: vector.originalX || vector.baseX || 0,
+  originalY: vector.originalY || vector.baseY || 0,
+  initialAngle: vector.initialAngle || 0,
+  currentAngle: vector.currentAngle || vector.initialAngle || 0,
+  lengthFactor: vector.lengthFactor || 1,
+  widthFactor: vector.widthFactor || 1,
+  intensityFactor: vector.intensityFactor || 1,
+  x: vector.baseX || 0,
+    y: vector.baseY || 0,
+    angle: vector.initialAngle || 0,
+    originalAngle: vector.initialAngle || 0,
+    length: 10, // Valor por defecto
+    originalLength: 10, // Valor por defecto
+    color: '#000000', // Valor por defecto
+    originalColor: '#000000', // Valor por defecto
+    customData: vector.customData
+  }));
+  
+  // Inicializar también la referencia
+  animatedVectorsRef.current = initialModularVectors;
+  
+  return initialModularVectors;
+});
 
   // Mantener referencias actualizadas
   useEffect(() => {
@@ -234,7 +242,7 @@ export const useVectorAnimationWithStore = (
   // Convertir los vectores animados del formato del sistema modular al formato de la interfaz de usuario
   // Usar useMemo para evitar recálculos innecesarios
   const uiVectors = useMemo<UIVectorItem[]>(() => {
-    return animatedVectors.map(vector => ({
+    return animatedVectors.map((vector: any) => ({
       id: vector.id,
       r: vector.r,
       c: vector.c,
@@ -247,12 +255,21 @@ export const useVectorAnimationWithStore = (
       lengthFactor: vector.lengthFactor,
       widthFactor: vector.widthFactor,
       intensityFactor: vector.intensityFactor || 1,
+      // Añadir todos los campos requeridos por UIVectorItem
+      x: vector.x || vector.baseX || 0,
+      y: vector.y || vector.baseY || 0,
+      angle: vector.angle || vector.initialAngle || 0,
+      originalAngle: vector.originalAngle || vector.initialAngle || 0,
+      length: vector.length || 10,
+      originalLength: vector.originalLength || 10,
+      color: vector.color || '#000000',
+      originalColor: vector.originalColor || '#000000',
       customData: vector.customData
     }));
   }, [animatedVectors]);
 
   // Función para convertir de UIVectorItem a ModularVectorItem
-  const toAnimatedVector = useCallback((uiVector: ExtendedUIVectorItem): ModularVectorItem => {
+  const toAnimatedVector = useCallback((uiVector: any): ModularVectorItem => {
     // Preservar propiedades de estilo importantes en un objeto style
     const styleData = {
       length: uiVector.length ?? 10,
@@ -285,12 +302,21 @@ export const useVectorAnimationWithStore = (
       lengthFactor: uiVector.lengthFactor || 1,
       widthFactor: uiVector.widthFactor || 1,
       intensityFactor: uiVector.intensityFactor || 1,
+      // Añadir propiedades requeridas para AnimatedVectorItem
+      x: uiVector.baseX || 0,
+      y: uiVector.baseY || 0,
+      angle: uiVector.initialAngle || 0,
+      originalAngle: uiVector.initialAngle || 0,
+      length: styleData.length,
+      originalLength: styleData.originalLength,
+      color: styleData.color,
+      originalColor: styleData.originalColor,
       customData: mergedCustomData
     };
   }, []);
 
   // Función para actualizar los vectores animados (memoizada)
-  const setUIAnimatedVectors = useCallback((newState: UIVectorItem[] | ((prev: UIVectorItem[]) => UIVectorItem[])) => {
+  const setUIAnimatedVectors = useCallback((newState: any) => {
     // Evitar recálculos innecesarios
     if (Array.isArray(newState)) {
       // Si es un array directo, actualizar una vez
@@ -301,7 +327,7 @@ export const useVectorAnimationWithStore = (
       
       // Luego el estado con menos frecuencia
       setAnimatedVectors(modularVectors);
-    } else {
+    } else if (typeof newState === 'function') {
       // Si es una función, usar la referencia actual para el cálculo
       const currentUiVectors = uiVectors;
       const newUiVectors = newState(currentUiVectors);

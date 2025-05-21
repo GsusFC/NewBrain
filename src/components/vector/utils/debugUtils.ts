@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Utilidades para depuración controlada en VectorGrid
  * 
@@ -74,6 +75,7 @@ function shouldLog(category: string, level: LogLevel): boolean {
 export function logObject(
   category: string, 
   title: string, 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any, 
   level: LogLevel = 'info'
 ): void {
@@ -120,6 +122,7 @@ export function logPerformance(
 export function logError(
   category: string, 
   message: string, 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
 ): void {
   if (!shouldLog(category, 'error')) return;
@@ -134,11 +137,11 @@ export function logError(
 /**
  * Inicializa componente de debug con configuración específica
  */
-export function createComponentLogger(componentName: string, config?: Partial<DebugConfig>) {
-  const componentConfig = { ...debugConfig, ...config };
+export function createComponentLogger(componentName: string, _config?: Partial<DebugConfig>) {
+  // const componentConfig = { ...debugConfig, ...config }; // TODO: Revisit component-specific config
   
   return {
-    info: (message: string, data?: any) => {
+    info: (message: string, data?: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!shouldLog(componentName, 'info')) return;
       if (data) {
         logObject(componentName, message, data, 'info');
@@ -146,7 +149,7 @@ export function createComponentLogger(componentName: string, config?: Partial<De
         logMessage(componentName, message, 'info');
       }
     },
-    debug: (message: string, data?: any) => {
+    debug: (message: string, data?: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!shouldLog(componentName, 'debug')) return;
       if (data) {
         logObject(componentName, message, data, 'debug');
@@ -154,7 +157,7 @@ export function createComponentLogger(componentName: string, config?: Partial<De
         logMessage(componentName, message, 'debug');
       }
     },
-    warn: (message: string, data?: any) => {
+    warn: (message: string, data?: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!shouldLog(componentName, 'warn')) return;
       if (data) {
         logObject(componentName, message, data, 'warn');
@@ -162,7 +165,7 @@ export function createComponentLogger(componentName: string, config?: Partial<De
         logMessage(componentName, message, 'warn');
       }
     },
-    error: (message: string, error?: any) => {
+    error: (message: string, error?: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       logError(componentName, message, error);
     },
     performance: (operation: string, startTime: number) => {
@@ -197,6 +200,7 @@ export function logRenderStats(
   totalItems: number,
   renderedItems: number,
   dimensions: { width: number, height: number },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   options?: { [key: string]: any }
 ): void {
   if (!shouldLog(componentName, 'info')) return;

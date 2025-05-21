@@ -26,6 +26,7 @@ interface SelectProps extends SelectBaseProps {
   value: string
   onValueChange: (value: string) => void
   disabled?: boolean
+  as?: React.ElementType
 }
 
 interface SelectTriggerProps extends SelectBaseProps {
@@ -52,8 +53,8 @@ interface SelectScrollButtonProps extends SelectBaseProps {}
  * Componente Select con estilos predefinidos
  */
 const Select = React.forwardRef<HTMLDivElement, SelectProps>(
-  ({ value, onValueChange, children, className, disabled, ...props }, ref) => (
-    <div className={cn("relative", className)}>
+  ({ value, onValueChange, children, className, disabled, as: Component = "div", ...props }, ref) => (
+    <Component className={cn("relative", className)}>
       <HeadlessSelect 
         as="div"
         ref={ref}
@@ -62,11 +63,10 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
         disabled={disabled}
         className="w-full"
         data-slot="select"
-        {...props}
       >
         {children}
       </HeadlessSelect>
-    </div>
+    </Component>
   )
 )
 Select.displayName = "Select"

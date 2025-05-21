@@ -1,8 +1,13 @@
 'use client';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import React from 'react';
-import { GridControlSelector } from './index';
-import { AspectRatioOption, CustomAspectRatio, GridSettings } from './types';
+import { AspectRatioOption, GridSettings } from '../../core/types';
+
+interface CustomAspectRatio {
+  width: number;
+  height: number;
+}
 
 interface GridControlsProps {
   currentProps: {
@@ -19,24 +24,17 @@ interface GridControlsProps {
   }) => void;
 }
 
+/**
+ * Componente simplificado que no hace nada pero mantiene compatibilidad
+ * con el código existente para evitar errores.
+ */
 export function GridControls({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   currentProps,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onPropsChange,
 }: GridControlsProps) {
-  const { 
-    gridSettings = {}, 
-    aspectRatio = '16:9', 
-    customAspectRatio,
-    backgroundColor 
-  } = currentProps;
-
-  return (
-    <GridControlSelector
-      gridSettings={gridSettings}
-      aspectRatio={aspectRatio}
-      customAspectRatio={customAspectRatio}
-      backgroundColor={backgroundColor}
-      onPropsChange={onPropsChange}
-    />
-  );
+  // No renderizamos nada, este es un componente fantasma
+  // sólo para mantener la compatibilidad con el código existente
+  return null;
 }

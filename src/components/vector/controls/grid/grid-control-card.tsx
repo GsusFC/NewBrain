@@ -6,14 +6,13 @@ import { cn } from "@/lib/utils";
 
 interface GridControlCardProps extends React.HTMLAttributes<HTMLDivElement> {
   title: string;
-  variant?: "default" | "aspect-ratio" | "density" | "manual";
+  variant?: "default" | "aspect-ratio" | "manual";
   active?: boolean;
   children: React.ReactNode;
 }
 
 const variantStyles = {
   "aspect-ratio": "border-indigo-500/30 bg-indigo-950/30",
-  "density": "border-emerald-500/30 bg-emerald-950/30",
   "manual": "border-amber-500/30 bg-amber-950/30",
   "default": "border-muted"
 };

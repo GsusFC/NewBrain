@@ -333,8 +333,7 @@ export function useAspectRatioCalculator() {
         containerHeight = GRID_CONSTANTS.DEFAULT_CONTAINER_SIZE, 
         spacing = GRID_CONSTANTS.DEFAULT_SPACING, 
         margin = GRID_CONSTANTS.DEFAULT_MARGIN,
-        padding = GRID_CONSTANTS.DEFAULT_PADDING, // Nuevo: padding interno opcional 
-        density, 
+        padding = GRID_CONSTANTS.DEFAULT_PADDING, // padding interno opcional
         baseRows: optionsBaseRows 
       } = options;
       
@@ -357,8 +356,8 @@ export function useAspectRatioCalculator() {
       const safeMargin = Math.max(0, margin);
       const safePadding = Math.max(0, padding);
       
-      // Determinar si estamos en modo density/baseRows o en modo automático
-      const usingExplicitRows = optionsBaseRows !== undefined || density !== undefined;
+      // Determinar si estamos usando filas explícitas o modo automático
+      const usingExplicitRows = optionsBaseRows !== undefined;
       
       // Para el caso de custom con dimensiones específicas, usamos una lógica diferente
       if (aspectRatio === 'custom' && customRatio && !usingExplicitRows) {
@@ -383,18 +382,10 @@ export function useAspectRatioCalculator() {
         };
       }
       
-      // Si estamos en modo density o baseRows
+      // Si se especifican filas explícitamente
       if (usingExplicitRows) {
         // Determinar baseRows
-        let baseRows: number;
-        
-        if (optionsBaseRows !== undefined) {
-          // Usar el valor proporcionado explícitamente
-          baseRows = Math.max(GRID_CONSTANTS.MIN_ROWS, optionsBaseRows);
-        } else {
-          // Usar density como baseRows
-          baseRows = Math.max(GRID_CONSTANTS.MIN_ROWS, density || GRID_CONSTANTS.RECOMMENDED_ROWS);
-        }
+        const baseRows = Math.max(GRID_CONSTANTS.MIN_ROWS, optionsBaseRows ?? GRID_CONSTANTS.RECOMMENDED_ROWS);
         
         // Calcular columnas basadas en las filas y el ratio
         const [width, height] = getAspectRatioValues(aspectRatio, customRatio);

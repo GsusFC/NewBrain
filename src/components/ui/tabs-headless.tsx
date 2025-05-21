@@ -28,21 +28,23 @@ interface TabItem {
   className?: string
 }
 
-interface TabsProps {
+interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
   defaultValue?: string
   value?: string
   onValueChange?: (value: string) => void
+  orientation?: 'horizontal' | 'vertical'
   children: React.ReactNode
-  className?: string
 }
 
-const Tabs = ({ 
+const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(({ 
   defaultValue = '', 
   value: valueProp, 
   onValueChange, 
+  orientation = 'horizontal',
   children, 
-  className 
-}: TabsProps) => {
+  className,
+  ...props
+}, ref) => {
   const [selectedValue, setSelectedValue] = React.useState(defaultValue)
   
   // Handle controlled/uncontrolled component behavior
@@ -81,7 +83,7 @@ const Tabs = ({
   // Extract tabs from TabsList with proper typing
   const tabs = React.useMemo<TabItem[]>(() => 
     React.Children.toArray(tabsList?.props?.children || [])
-      .filter((child): child is React.ReactElement<{value: string, disabled?: boolean, className?: string}> => 
+      .filter((child): child is React.ReactElement<TabsTriggerProps> => 
         React.isValidElement(child) && child.type === TabsTrigger
       )
       .map((tab, index) => ({
@@ -112,48 +114,67 @@ const Tabs = ({
   React.useEffect(() => {
     if (value !== undefined) {
       const index = tabs.findIndex(tab => tab.value === value)
-      if (index !== -1) {
-        setSelectedIndex(index)
+      if (index !== -1 && index !== selectedIndex) {
+        setSelectedIndex(index);
       }
     }
-  }, [value, tabs])
+  }, [value, tabs, selectedIndex])
 
   return (
-    <Tab.Group selectedIndex={selectedIndex} onChange={handleChange} className={className}>
-      {tabsList && (
-        <Tab.List className={tabsList.props.className}>
-          {tabs.map((tab) => (
-            <Tab
-              key={tab.value}
-              className={({ selected }: { selected: boolean }) => 
-                cn(
-                  'px-4 py-2 text-sm font-medium rounded-md',
-                  selected 
-                    ? 'bg-background text-foreground shadow'
-                    : 'text-muted-foreground hover:text-foreground'
-                )
-              }
-            >
-              {tab.label}
-            </Tab>
-          ))}
-        </Tab.List>
+    <div 
+      ref={ref} 
+      className={cn(
+        "flex", 
+        orientation === "vertical" ? "flex-row space-x-2" : "flex-col",
+        className
       )}
-      
-      <div className="mt-4">
-        <Tab.Panels>
-          {tabsContent.map((content, index) => (
-            <Tab.Panel key={content.props.value || index}>
-              <TabsContent value={content.props.value}>
-                {content.props.children}
-              </TabsContent>
-            </Tab.Panel>
-          ))}
-        </Tab.Panels>
-      </div>
-    </Tab.Group>
+      data-orientation={orientation}
+      {...props}>
+      <Tab.Group 
+        selectedIndex={selectedIndex} 
+        onChange={handleChange} 
+        vertical={orientation === "vertical"}
+      >
+        {tabsList && (
+          <Tab.List className={cn(
+            tabsList.props.className,
+            orientation === "vertical" && "flex-col"
+          )}>
+            {tabs.map((tab) => (
+              <Tab
+                key={tab.value}
+                className={({ selected }: { selected: boolean }) => 
+                  cn(
+                    'px-4 py-2 text-sm font-medium rounded-md',
+                    selected 
+                      ? 'bg-background text-foreground shadow'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )
+                }
+              >
+                {tab.label}
+              </Tab>
+            ))}
+          </Tab.List>
+        )}
+        
+        <div className={cn("flex-1", orientation === "horizontal" && "mt-4")}>
+          <Tab.Panels>
+            {tabsContent.map((content, index) => (
+              <Tab.Panel key={content.props.value || index}>
+                <TabsContent value={content.props.value}>
+                  {content.props.children}
+                </TabsContent>
+              </Tab.Panel>
+            ))}
+          </Tab.Panels>
+        </div>
+      </Tab.Group>
+    </div>
   )
-}
+})
+
+Tabs.displayName = "Tabs"
 
 /**
  * Contenedor para los triggers de las pestañas
@@ -175,6 +196,7 @@ TabsList.displayName = "TabsList"
  */
 interface TabsTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   value: string
+  children?: React.ReactNode
 }
 
 const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
